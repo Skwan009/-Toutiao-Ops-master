@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "1.0.0",
+  "note": "外部热点数据源（二级权重）。加源 = 加一个条目。第一个成功即返回；失败则降级下一个。429 当日熔断。",
+  "cacheMinutes": 30,
+  "timeoutMs": 8000,
+  "retries": 3,
+  "backoffMs": [1000, 3000, 9000],
+  "providers": [
+    {
+      "id": "uapis-douyin",
+      "name": "uapis·抖音热榜",
+      "platform": "douyin",
+      "tier": 2,
+      "enabled": true,
+      "url": "https://uapis.cn/api/v1/misc/hotboard?type=douyin",
+      "listPath": "list",
+      "fieldMap": { "title": "title", "hot": "hot_value", "url": "url", "rank": "index" }
+    },
+    {
+      "id": "uapis-toutiao",
+      "name": "uapis·头条热榜",
+      "platform": "toutiao",
+      "tier": 2,
+      "enabled": true,
+      "url": "https://uapis.cn/api/v1/misc/hotboard?type=toutiao",
+      "listPath": "list",
+      "fieldMap": { "title": "title", "hot": "hot_value", "url": "url", "rank": "index" }
+    }
+  ]
+}

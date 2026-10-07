@@ -17,9 +17,9 @@ metadata:
 
 ## 首次使用
 
-1. 全局安装 CLI 工具：`npm install -g @openclaw-cn/toutiao-ops`
-2. 安装完成后会自动下载 Chromium 浏览器，若失败则手动执行：`npx playwright install chromium`
-3. 登录：`toutiao-ops auth login`（首次需手动扫码）
+- 安装：`npm i -g toutiao-ops`；或本地运行 `node <仓库目录>/cli/index.js <命令>`（下文 `toutiao-ops xxx` 均按此替换）
+- 首次需安装 Chromium：`npx playwright install chromium`
+- 登录：`toutiao-ops auth login`（首次需手动扫码，二维码截图在 `~/.toutiao-ops/accounts/<name>/`）
 
 ## 多账号
 
@@ -61,6 +61,7 @@ toutiao-ops auth list
 - 粉丝数据分析（含分布数据 + 粉丝偏好） -> `references/analytics-fans.md`
 - 收益数据分析（支持图文/视频收益筛选） -> `references/analytics-income.md`
 - 创作灵感（创作活动 + 热点推荐） -> `references/inspiration.md`
+- 消息中心与选题信号 -> `references/message-center.md`
 
 ## 命令速查
 
@@ -82,6 +83,8 @@ toutiao-ops auth list
 | `toutiao-ops analytics income` | 收益数据（支持 --type article / video） |
 | `toutiao-ops analytics content-detail` | 单个作品详细数据（支持 --content-id / --content-type） |
 | `toutiao-ops inspiration` | 创作灵感（支持 --type activity / hotspot） |
+| `toutiao-ops message-center` | 消息中心推送（支持 --type / --box-type / --all / --raw） |
+| `toutiao-ops topic-signals` | 选题信号（一级：消息中心/作品数据；二级：外部热点；支持 --source / --filter） |
 
 ## 通用选项
 

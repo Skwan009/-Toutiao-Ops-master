@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0.0",
+  "note": "选题过滤漏斗：执行顺序由本文件 stages 顺序决定（预留点 #5）。新增阶段 = 加一个条目 + 在 src/pipeline.js 的 REGISTRY 登记。",
+  "stages": [
+    {
+      "id": "compliance",
+      "enabled": true,
+      "blocklist": "blocklist.example.json",
+      "categories": ["banned", "sensitive", "absolute", "medical"]
+    },
+    {
+      "id": "domainMatch",
+      "enabled": true,
+      "domains": "domains.example.json",
+      "activeDomains": ["life", "emotion"],
+      "minHits": 1
+    },
+    {
+      "id": "dedupe",
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "1.0.0",
+  "note": "信号源注册表（AGENTS 预留点 #3/#4）。加源 = 加一个条目；权重层级见 weights.json。",
+  "sources": [
+    {
+      "id": "message-center",
+      "kind": "internal",
+      "tier": 1,
+      "enabled": true,
+      "module": "src/message-center.js",
+      "note": "站内消息中心官方推送。一级：话题邀请/作者成长助手/活动通知；其余类型为 tier=3（见 message-types.json）"
+    },
+    {
+      "id": "works-analytics",
+      "kind": "internal",
+      "tier": 1,
+      "enabled": true,
+      "module": "src/signals/works-analytics.js",
+      "note": "数据-作品数据（单篇明细待接入，当前复用 analytics works）"
+    },
+    {
+      "id": "external-hot",
+      "kind": "external",
+      "tier": 2,
+      "enabled": true,
+      "module": "src/signals/external-hot.js",
+      "providers": "config/providers.json",
+      "note": "外部第三方聚合 API 热点（纯 Node fetch，二级权重）"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "1.0.0",
+  "appId": 1231,
+  "note": "权重层级见 weights.json（单一事实来源）",
+  "types": [
+    { "id": "topic_invite", "label": "话题邀请", "boxType": 1025, "channel": "official", "tier": 1, "order": 1 },
+    { "id": "growth_assistant", "label": "作者成长助手", "boxType": 1026, "channel": "official", "tier": 1, "order": 2 },
+    { "id": "activity_notice", "label": "活动通知", "boxType": 1022, "channel": "official", "tier": 1, "order": 3 },
+    { "id": "system_notice", "label": "系统通知", "boxType": 1023, "channel": "official", "tier": 3, "order": 4 },
+    { "id": "service_notice", "label": "服务通知", "boxType": 1306, "channel": "official", "tier": 3, "order": 5 },
+    { "id": "comment_at", "label": "评论和@", "boxType": 1008, "channel": "interact", "tier": 3, "order": 6 },
+    { "id": "digg", "label": "点赞", "boxType": 1005, "channel": "interact", "tier": 3, "order": 7 },
+    { "id": "fans", "label": "粉丝", "boxType": 1002, "channel": "interact", "tier": 3, "order": 8 }
+  ],
+  "aliases": {
+    "topic_invite": "topic_invite", "话题邀请": "topic_invite", "invite": "topic_invite", "1025": "topic_invite",
+    "growth_assistant": "growth_assistant", "作者成长助手": "growth_assistant", "growth": "growth_assistant", "1026": "growth_assistant",
+    "activity_notice": "activity_notice", "活动通知": "activity_notice", "activity": "activity_notice", "1022": "activity_notice",
+    "system_notice": "system_notice", "系统通知": "system_notice", "1023": "system_notice",
+    "service_notice": "service_notice", "服务通知": "service_notice", "1306": "service_notice",
+    "comment_at": "comment_at", "评论和@": "comment_at", "1008": "comment_at",
+    "digg": "digg", "点赞": "digg", "1005": "digg",
+    "fans": "fans", "粉丝": "fans", "1002": "fans"
+  },
+  "messageTypeMap": {
+    "digg_thread": "digg",
+    "digg_pgc_article": "digg",
+    "toutiao_activity_notify": "activity_notice",
+    "toutiao_top_batch_notify": "system_notice",
+    "sub_type_4074": "topic_invite",
+    "sub_type_4075": "growth_assistant",
+    "sub_type_4076": "service_notice"
+  },
+  "relationMap": { "0": "普通用户", "1": "关注", "2": "粉丝", "3": "互相关注" }
+}

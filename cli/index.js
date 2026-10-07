@@ -9,6 +9,8 @@ import { listContent } from './src/content-manage.js';
 import { listComments, replyComment, likeComment } from './src/comment-manage.js';
 import { getWorksAnalytics, getFansAnalytics, getIncomeAnalytics, getContentDetail } from './src/analytics.js';
 import { listInspiration } from './src/inspiration.js';
+import { listMessages } from './src/message-center.js';
+import { listTopicSignals } from './src/topic-signals.js';
 import { checkForUpdates } from './src/update-check.js';
 
 const program = new Command();
@@ -202,6 +204,34 @@ program
   .option('--headless', '无头模式运行')
   .action(async (opts) => {
     await run(listInspiration, opts);
+  });
+
+// ── message-center ──
+program
+  .command('message-center')
+  .description('拉取消息中心推送（话题邀请/活动通知/作者成长助手等）')
+  .option('--type <type>', '分类：语义名/中文，逗号分隔；all=全部')
+  .option('--box-type <n>', '按 box_type 数字指定，逗号分隔，如 1025,1022')
+  .option('--all', '包含互动类（评论和@/点赞/粉丝）')
+  .option('--limit <n>', '每页数量', '10')
+  .option('--max-pages <n>', '每个分类最多翻页数', '5')
+  .option('--raw', '输出原始 cell 数据（体积较大）')
+  .option('--headless', '无头模式运行')
+  .action(async (opts) => {
+    await run(listMessages, opts);
+  });
+
+// ── topic-signals ──
+program
+  .command('topic-signals')
+  .description('拉取选题信号（一级：消息中心/作品数据；二级：外部热点）')
+  .option('--source <ids>', '指定信号源，逗号分隔：message-center,works-analytics,external-hot')
+  .option('--filter', '套用三级漏斗（合规→域匹配→排重）')
+  .option('--limit <n>', '消息中心每页数量', '10')
+  .option('--max-pages <n>', '消息中心每分类最多翻页数', '1')
+  .option('--headless', '无头模式运行')
+  .action(async (opts) => {
+    await run(listTopicSignals, opts);
   });
 
 // ── runner ──
