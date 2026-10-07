@@ -204,35 +204,41 @@ cd cli
 - [x] 新增 `AGENTS.md` / `CLAUDE.md` / 补 `.gitignore`（`output/`、`*.probe.json`、`.vscode/`）
 - [x] 写 `cli/tools/probe-message-center.mjs`（**只读**勘察脚本）
 
-### ⬜ 待做（按顺序）
+### ✅ 已实施（2026-10-07）
 
-**Step 1 — 跑勘察脚本，拿到消息中心的真实结构**
+**Step 1 — 消息中心结构勘察** ✅
+- 运行 `cli/tools/probe-message-center.mjs`（两次：初勘 + 微调）
+- 结论：消息中心**有稳定 URL** `profile_v4/personal/message`（"必须点侧栏"的假设作废）
+- 真实接口：`POST /bcs/notice/boxes/`（分类目录）+ `POST /bcs/notice/cell/list/`（明细，参数 `box_type` + `cursor` + `limit`）
 
-```powershell
-cd <仓库目录>\cli
-& "<node>" tools\probe-message-center.mjs --account n1
-```
+**Step 2 — 正式模块** ✅
+1. `cli/config/message-types.json`（8 类 box_type + 别名 + tier）
+2. `cli/src/signals/base.js`（统一信号源接口）
+3. `cli/src/message-center.js`（`listMessages(opts)`，直连站内接口）
+4. `cli/index.js` 仅追加注册行
+5. `references/message-center.md` 参数文档
 
-- 会弹出 Chromium 窗口（用 n1 已登录会话），约 40–60 秒，跑完自动关闭
-- 结果落盘 `cli\output\probe\message-center_n1_<时间戳>.json`
-- stdout 会打印摘要：页面 URL 轨迹 / 导航候选 / 接口命中（按兴趣度排序）/ 点击前后文本长度
-- 🔴 **边界**：该脚本只做「导航 + 扫描 + 点击消息入口」，**绝不输入文本、绝不提交表单、绝不发布**
+**Step 3 — 自测** ✅
+- 默认官方五类 50 条；`--type topic_invite` 正确提取 `topic` / `forumId`；`--box-type 1005` 数字分支正常
 
-**Step 2 — 依据勘察结果写正式模块**
-1. `cli/config/message-types.json` — 六类消息类型定义（话题邀请 / 作者成长助手 / 活动通知 / 系统通知 / 评论互动 / 私信），每类含 `id` / `match`（URL 与标题关键词）/ `fields` / `priority`
-2. `cli/src/signals/base.js` — 统一信号源接口 `{ id, collect(ctx) }`
-3. `cli/src/message-center.js` — 主模块，签名 `async function listMessages(opts)`
-4. `cli/index.js` — **仅追加**注册行（挂在 `inspiration` 旁边），不动任何现有逻辑
-5. `cli/references/message-center.md` — 参数文档
+**Step 4 — 提交** ✅
+- 拆成两个 commit：`dccbfe4`（历史增量与脱敏）、`e7c6d13`（本轮功能）
 
-**Step 3 — 自测**
-```powershell
-& "<node>" index.js message-center --account n1
-```
-对比输出 JSON 与外挂脚本的旧结果，确认：类型分得开、消息不截断、有 deadline 字段。
+### ✅ 追加完成（2026-10-07 下午）
 
-**Step 4 — 提交**
-注意工作区现有 13 个 `M` 文件是**历史增量**，应与新功能分开提交。
+| 项 | 产出 |
+|---|---|
+| 作品数据信号源（一级） | `cli/src/signals/works-analytics.js` — 调 `creator_center/list/v2?need_stat=true` 拿单篇 展现/阅读/评论/点赞 |
+| 外部热点信号源（二级） | `cli/src/signals/external-hot.js` + `cli/config/providers.json` — 纯 Node fetch，30min 缓存 / 重试 / 降级 / 429 熔断 |
+| 统一入口 | `cli/src/topic-signals.js` — `toutiao-ops topic-signals`，按 `weights.json` 打一级/二级权重 |
+| 三级漏斗 | `cli/src/pipeline.js` + `compliance.js` + `topic-guard.js` — `compliance → domainMatch → dedupe`，顺序由 `config/pipeline.json` 决定 |
+| 真实词表 / 域库 | `cli/data/blocklist.json`、`cli/data/domains.json`（均不入库，仅 `.example.json` 入库） |
+| 发布后核验 | `cli/src/verify.js` + `cli/config/verify.json` + `references/verify.md` — 草稿箱自检 → 条数+1 → 读 vl(`visibilityLevel`) → 重复检测 |
+
+### ⬜ 仍未做
+- `topic-recommend` 加权排序（用 `tier`/`weight` 把信号排成选题清单 + Markdown 摘要 + 落盘）
+- `config/verify.json` 的 `draft` 状态码待网络恢复后补测（当前 `null` → 该步跳过）
+- `cli/index.js` 版本号硬编码 `1.0.0`（应读 `package.json` 的 `1.1.4`）
 
 ---
 

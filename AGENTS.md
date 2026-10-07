@@ -20,13 +20,17 @@
 .
 ├── SKILL.md              # AI Agent 技能入口（元数据 + 命令速查）
 ├── README.md
+├── AGENTS.md / CLAUDE.md / HANDOFF.md   # 项目上下文与开发交接文档
 ├── cli/
-│   ├── index.js          # 命令总入口（commander 注册，224 行）
+│   ├── index.js          # 命令总入口（commander 注册）
 │   ├── package.json
-│   ├── src/              # 11 个功能模块
-│   ├── tools/            # [新增] 一次性探测/勘察脚本，非产品代码
+│   ├── src/              # 功能模块（原 11 个 + message-center / topic-signals / pipeline / compliance / topic-guard / verify）
+│   ├── src/signals/      # 统一信号源（base / works-analytics / external-hot）
+│   ├── config/           # 参数外置（message-types / weights / signals / providers / pipeline / verify）
+│   ├── data/             # 词表与域库（*.example.json 入库，真实数据不入库）
+│   ├── tools/            # 一次性探测/勘察脚本，非产品代码
 │   └── node_modules/
-├── references/           # 10 篇命令参数文档
+├── references/           # 12 篇命令参数文档
 ├── examples/             # 3 个发布输入 JSON 样例
 └── .github/workflows/publish.yml
 ```
@@ -105,22 +109,24 @@ $NODE index.js <命令> --account <n1|n2|default>
 |---|---|
 | 仓库从 skill 目录迁出到独立开发目录 | ✅ |
 | remote 改为 `upstream`（指向原作者） | ✅ |
-| 功能一 `message-center` 结构勘察脚本 | ✅ 已写 `cli/tools/probe-message-center.mjs`，**尚未运行** |
-| 功能一 `message-center` 正式模块 | ⬜ 待探测结果 |
-| 功能二 `external-source` + `topic-recommend` | ⬜ |
-| 模块 A `topic-guard` + `compliance`（功能二的前置依赖） | ⬜ |
-| 发布核验 `verify.js` | ⬜ 未排期 |
+| 功能一 `message-center`（勘察 + 正式模块 + 自测） | ✅ 直连 `boxes` + `cell/list` 两个接口 |
+| 信号源层 `src/signals/`（base / works-analytics / external-hot） | ✅ 一级 ×2 + 二级 ×1 |
+| 统一入口 `topic-signals`（一级/二级权重） | ✅ 按 `weights.json` 打标 |
+| 模块 A `compliance` + `topic-guard` + 三级漏斗 | ✅ 顺序由 `config/pipeline.json` 决定 |
+| 发布核验 `verify.js`（含 vl 分支） | ✅ 已实现，端到端实测待网络恢复 |
+| `topic-recommend` 加权排序 | ⬜ |
 
 **已知待修**：`cli/index.js` 第 19 行硬编码 `.version('1.0.0')`，与 `package.json` 的 1.1.4 不一致。
 
 ## 7. 计划中的新增文件
 
 ```
-cli/config/          message-types.json  providers.json  pipeline.json  weights.json
-cli/src/signals/     base.js  message-center.js  external-hot.js      # 统一信号源接口
-cli/src/             message-center.js  external-source.js  topic-recommend.js
-                     topic-guard.js  compliance.js  scheduler.js  verify.js
-cli/data/            *.example.json                                    # 域库/词表示例，真实数据不入库
+cli/config/          message-types.json  weights.json  signals.json  providers.json  pipeline.json  verify.json   ✅
+cli/src/signals/     base.js  works-analytics.js  external-hot.js                                                ✅  # 统一信号源接口
+cli/src/             message-center.js  topic-signals.js  pipeline.js                                            ✅
+                     compliance.js  topic-guard.js  verify.js                                                     ✅
+                     topic-recommend.js                                                                           ⬜  # 加权排序，待做
+cli/data/            blocklist.example.json  domains.example.json                                                ✅  # 示例入库，真实数据不入库
 ```
 
 ## 8. 边界与免责

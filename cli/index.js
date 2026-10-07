@@ -11,14 +11,21 @@ import { getWorksAnalytics, getFansAnalytics, getIncomeAnalytics, getContentDeta
 import { listInspiration } from './src/inspiration.js';
 import { listMessages } from './src/message-center.js';
 import { listTopicSignals } from './src/topic-signals.js';
+import { verifyPublish } from './src/verify.js';
 import { checkForUpdates } from './src/update-check.js';
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// 版本号以 package.json 为准，避免硬编码不同步
+const pkg = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'package.json'), 'utf-8'));
 
 const program = new Command();
 
 program
   .name('toutiao')
   .description('今日头条创作者平台运营自动化工具')
-  .version('1.0.0')
+  .version(pkg.version)
   .option('--account <name>', '指定操作的账号（默认 default）', 'default');
 
 // ── auth ──
@@ -232,6 +239,18 @@ program
   .option('--headless', '无头模式运行')
   .action(async (opts) => {
     await run(listTopicSignals, opts);
+  });
+
+// ── verify ──
+program
+  .command('verify')
+  .description('发布后核验（草稿箱自检 / 条数+1 / 读取作品 / 重复检测）')
+  .option('--content <text>', '目标正文片段（用于定位与比对）')
+  .option('--title <text>', '目标标题（无正文时使用）')
+  .option('--before-count <n>', '发布前的作品总数（用于核对 +1）')
+  .option('--headless', '无头模式运行')
+  .action(async (opts) => {
+    await run(verifyPublish, opts);
   });
 
 // ── runner ──

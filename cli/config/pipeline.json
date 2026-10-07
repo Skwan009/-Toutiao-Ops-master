@@ -5,14 +5,14 @@
     {
       "id": "compliance",
       "enabled": true,
-      "blocklist": "blocklist.example.json",
-      "categories": ["banned", "sensitive", "absolute", "medical"]
+      "blocklist": "blocklist.json",
+      "categories": ["illegal", "absolute", "medical", "finance"]
     },
     {
       "id": "domainMatch",
       "enabled": true,
-      "domains": "domains.example.json",
-      "activeDomains": ["life", "emotion"],
+      "domains": "domains.json",
+      "activeDomains": ["life", "emotion", "season"],
       "minHits": 1
     },
     {
