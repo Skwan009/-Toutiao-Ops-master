@@ -8,3 +8,14 @@ credentials.json
 *.tmp
 *.cache
 screenshots/
+
+# 本项目的运行时产物（探测报告、抓取快照、临时输出）
+output/
+*.probe.json
+
+# 真实业务数据（域库/词表）不入库，仅示例入库
+cli/data/*.json
+!cli/data/*.example.json
+
+# 编辑器个人配置
+.vscode/
