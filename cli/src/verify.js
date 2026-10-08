@@ -1,16 +1,19 @@
-import { launchBrowser, closeBrowser, browserFetch, sleep } from './browser.js';
+import { launchBrowser, closeBrowser, browserFetch, sleep, waitForStable, dismissOverlays } from './browser.js';
 import { ensureLoggedIn } from './auth-guard.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 /**
- * 发布后四步核验（独立于发布页的即时判定，走站内数据复核）。
+ * 发布后四步核验（独立于发布页的即时判定，走站内真实数据复核）。
  *   1. 草稿箱自检   —— 目标内容若仍在草稿，说明并未真正发布
- *   2. 条数 +1      —— 已发布总数较基线 +1
- *   3. 读 vl        —— 在已发布列表中定位目标作品并读取其状态/数据
+ *   2. 条数 +1      —— 作品总数较基线 +1
+ *   3. 读 vl        —— 按标题定位作品，读 articleBase.visibilityLevel 并按值分支
  *   4. 正文重复检测 —— 列表内出现重复正文 = 典型的"内容叠加"
- * 状态码等参数外置在 config/verify.json；未配置的阶段跳过并标注。
+ *
+ * 数据来源：管理页作品流的接口拦截（GET /api/feed/mp_provider/v1/）。
+ * 结构：data[].assembleCell.itemCell.{ articleBase, reviewInfo, itemCounter, ... }
+ * 直连该接口会 errno:20100（缺签名参数），故一律走拦截，不自造请求。
  */
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CFG_PATH = join(HERE, '..', 'config', 'verify.json');
@@ -24,42 +27,36 @@ function loadCfg() {
 /** 归一化文本，用于比对与排重 */
 const norm = (s) => String(s || '').replace(/[\s\p{P}]/gu, '').slice(0, 80);
 
-async function fetchList(page, cfg, status) {
-  const url = `${cfg.api}?status=${status}&type=0&page_size=${cfg.pageSize || 50}&need_stat=true&wenda_type=1&app_id=${cfg.appId || 1231}`;
-  const r = await browserFetch(page, url);
-  let d = r && r.data;
-  if (typeof d === 'string') {
-    try { d = JSON.parse(d); } catch {}
+/** 从 mp_provider 响应体抽取 itemCell 列表 */
+function extractCells(json) {
+  const arr = (json && json.data) || [];
+  const out = [];
+  for (const d of arr) {
+    const ic = d && d.assembleCell && d.assembleCell.itemCell;
+    if (ic && ic.articleBase) out.push(ic);
   }
-  return d || {};
+  return out;
 }
 
-function itemTitle(it) {
-  const attr = it.article_attr || {};
-  return attr.title || (it.content && it.content.title) || '';
-}
-
-function toItems(data) {
-  return Array.isArray(data.contents) ? data.contents : [];
-}
-
-// ── vl（visibilityLevel）读取：兼容 snake_case / camelCase 两种命名 ──
-const attrOf = (it) => it.article_attr || it.articleBase || {};
-const pickVL = (it) => attrOf(it).visibility_level ?? attrOf(it).visibilityLevel ?? it.visibility_level ?? null;
-const pickReview = (it) => attrOf(it).review_info ?? attrOf(it).reviewInfo ?? null;
-const pickSuppression = (it) => attrOf(it).suppression_info ?? attrOf(it).suppressionInfo ?? null;
+const cellTitle = (ic) => [ic.articleBase && ic.articleBase.title, ic.articleBase && ic.articleBase.abstractText].filter(Boolean).join(' ');
 
 /** itemCounter：刚发布时展现/阅读为 0 属正常 */
-function pickCounter(it) {
-  const s = it.article_stat || it.itemCounter || {};
-  const c = {};
-  for (const x of s.counters || []) c[x.Name] = x.Count;
+function pickCounter(ic) {
+  const c = ic.itemCounter || {};
   return {
-    impression: s.impression_count ?? c['展现'] ?? 0,
-    read: s.go_detail_count ?? c['阅读'] ?? 0,
-    comment: s.comment_count ?? c['评论'] ?? 0,
-    digg: s.digg_count ?? c['点赞'] ?? 0,
+    show: c.showCount ?? 0,
+    read: c.readCount ?? 0,
+    comment: c.commentCount ?? 0,
+    digg: c.diggCount ?? 0,
+    repin: c.repinCount ?? 0,
   };
+}
+
+function pickSuppression(ic) {
+  return ic.suppressionInfo
+    ?? (ic.extra && ic.extra.suppressionInfo)
+    ?? (ic.articleBase && ic.articleBase.suppressionInfo)
+    ?? null;
 }
 
 /** vl 分支判定（ok=null 表示无法判定） */
@@ -83,33 +80,60 @@ export function classifyVL(vl, review, suppression) {
 
 export async function verifyPublish(opts = {}) {
   const cfg = loadCfg();
-  const sc = cfg.statusCodes || {};
   const target = norm(opts.content || opts.title || '');
-  const steps = [];
   const { context, page } = await launchBrowser(opts);
+  const cells = [];
+  let total = null;
 
+  // 先挂监听，再导航（拦截管理页作品流）
+  page.on('response', async (r) => {
+    try {
+      if (!r.url().includes(cfg.feedApiMatch)) return;
+      const j = await r.json();
+      if (j && j.total_number != null) total = j.total_number;
+      cells.push(...extractCells(j));
+    } catch {}
+  });
+
+  const steps = [];
   try {
     await ensureLoggedIn(page);
-    await sleep(1000, 2000);
 
     // ── 步骤 1：草稿箱自检 ──
-    if (sc.draft == null) {
-      steps.push({ id: 'draft_check', skipped: true, reason: '未配置 draft 状态码（config/verify.json）' });
-    } else {
-      const d = await fetchList(page, cfg, sc.draft);
-      const hit = toItems(d).some((it) => norm(itemTitle(it)).includes(target) || target.includes(norm(itemTitle(it))) && target);
-      steps.push({
-        id: 'draft_check',
-        ok: !hit,
-        draftCount: toItems(d).length,
-        total: d.total_count ?? null,
-        reason: hit ? '目标内容仍在草稿箱 —— 实际未发布' : '草稿箱中未发现目标内容',
-      });
+    await page.goto(cfg.pages.draft, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await waitForStable(page);
+    await sleep(2500, 3500);
+    await dismissOverlays(page);
+    const draftText = await page.evaluate(() => document.body.innerText || '');
+    const emptyDraft = /暂无草稿|共\s*0\s*条内容/.test(draftText);
+    const inDraft = !emptyDraft && Boolean(target) && norm(draftText).includes(target);
+    steps.push({
+      id: 'draft_check',
+      ok: !inDraft,
+      empty: emptyDraft,
+      reason: inDraft ? '目标内容仍在草稿箱 —— 实际未发布' : emptyDraft ? '草稿箱为空' : '草稿箱中未发现目标内容',
+    });
+
+    // ── 加载作品流（步骤 2/3/4 共用）──
+    await page.goto(cfg.pages.content, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await waitForStable(page);
+    await sleep(3000, 4000);
+    await dismissOverlays(page);
+    for (let i = 0; i < (cfg.maxScrolls || 3); i++) {
+      await page.mouse.wheel(0, 2500).catch(() => {});
+      await sleep(1200, 1800);
     }
 
     // ── 步骤 2：条数 +1 ──
-    const published = await fetchList(page, cfg, sc.published ?? 2);
-    const currentCount = published.total_count ?? toItems(published).length;
+    // 作品总数取 creator_center 的 total_count（mp_provider 的 total_number 只是当页条数）
+    let currentCount = null;
+    try {
+      const r = await browserFetch(page, `${cfg.countApi}?status=${cfg.countStatus ?? 2}&type=0&page_size=1&need_stat=true&wenda_type=1&app_id=${cfg.appId ?? 1231}`);
+      let d = r && r.data;
+      if (typeof d === 'string') { try { d = JSON.parse(d); } catch {} }
+      if (d && d.total_count != null) currentCount = d.total_count;
+    } catch {}
+    if (currentCount == null) currentCount = total != null ? total : cells.length;
     const snapFile = join(SNAP_DIR, `${opts.account || 'default'}.json`);
     let baseline = opts.beforeCount != null ? Number(opts.beforeCount) : null;
     let baselineSource = baseline != null ? 'opts' : null;
@@ -122,33 +146,33 @@ export async function verifyPublish(opts = {}) {
     steps.push({
       id: 'count_plus_one',
       ok: baseline == null ? null : currentCount === baseline + 1,
+      skipped: baseline == null,
       baseline,
       baselineSource,
       current: currentCount,
-      skipped: baseline == null,
-      reason: baseline == null ? '无基线（可传 --before-count，或先跑一次生成快照）'
+      reason: baseline == null
+        ? '无基线（可传 --before-count，或先跑一次生成快照）'
         : currentCount === baseline + 1 ? '总数 +1，符合预期' : `总数 ${baseline} → ${currentCount}，未 +1`,
     });
 
-    // ── 步骤 3：读 vl（按标题定位作品 → 读 visibilityLevel → 按值分支）──
-    const publishedItems = toItems(published);
+    // ── 步骤 3：读 vl（按标题定位 → visibilityLevel 分支）──
     const matched = target
-      ? publishedItems.find((it) => norm(itemTitle(it)).includes(target))
+      ? cells.find((ic) => norm(cellTitle(ic)).includes(target))
       : null;
-
     if (!matched) {
-      steps.push({ id: 'read_vl', ok: null, found: false, reason: '未在已发布列表中匹配到目标内容' });
+      steps.push({ id: 'read_vl', ok: null, found: false, scanned: cells.length, reason: '未在作品流中匹配到目标内容（可能未发布，或不在首页）' });
     } else {
-      const vl = pickVL(matched);
-      const review = pickReview(matched);
+      const vl = matched.articleBase.visibilityLevel ?? null;
+      const review = matched.reviewInfo ?? null;
       const suppression = pickSuppression(matched);
       const cls = classifyVL(vl, review, suppression);
       steps.push({
         id: 'read_vl',
         ok: cls.ok,
         found: true,
-        matchedTitle: itemTitle(matched).slice(0, 60),
+        matchedTitle: (matched.articleBase.title || '').slice(0, 60),
         visibilityLevel: vl,
+        itemStatus: matched.articleBase.itemStatus ?? null,
         verdict: cls.verdict,
         selfHealing: cls.selfHealing ?? null,
         reviewInfo: review,
@@ -160,8 +184,8 @@ export async function verifyPublish(opts = {}) {
 
     // ── 步骤 4：正文重复检测 ──
     const groups = new Map();
-    for (const it of publishedItems) {
-      const k = norm(itemTitle(it));
+    for (const ic of cells) {
+      const k = norm(cellTitle(ic));
       if (!k) continue;
       groups.set(k, (groups.get(k) || 0) + 1);
     }
@@ -169,11 +193,12 @@ export async function verifyPublish(opts = {}) {
     steps.push({
       id: 'duplicate_check',
       ok: dups.length === 0,
+      scanned: cells.length,
       duplicates: dups,
       reason: dups.length ? `发现 ${dups.length} 组重复内容（疑似内容叠加）` : '未发现重复内容',
     });
 
-    // 落盘本次快照，供下次比对基线
+    // 落盘快照，供下次比对基线
     try {
       mkdirSync(SNAP_DIR, { recursive: true });
       writeFileSync(snapFile, JSON.stringify({ schemaVersion: SCHEMA_VERSION, account: opts.account || 'default', count: currentCount, at: new Date().toISOString() }, null, 2));

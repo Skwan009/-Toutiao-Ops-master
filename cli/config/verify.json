@@ -1,13 +1,14 @@
 {
   "schemaVersion": "1.0.0",
-  "note": "发布后核验配置。statusCodes 需按站内接口实际语义填写；为 null 的步骤会跳过并在结果里标注 skipped。",
+  "note": "发布后核验配置。作品流走管理页「接口拦截」（无需自造签名参数，直连该接口会 errno:20100）。",
+  "pages": {
+    "content": "https://mp.toutiao.com/profile_v4/manage/content/all",
+    "draft": "https://mp.toutiao.com/profile_v4/manage/draft"
+  },
+  "feedApiMatch": "/api/feed/mp_provider/v1/",
+  "maxScrolls": 3,
+  "countApi": "https://mp.toutiao.com/mp/agw/creator_center/list/v2",
+  "countStatus": 2,
   "appId": 1231,
-  "api": "https://mp.toutiao.com/mp/agw/creator_center/list/v2",
-  "pageSize": 50,
-  "statusCodes": {
-    "published": 2,
-    "draft": null,
-    "reviewing": null,
-    "rejected": null
-  }
+  "note_countStatus": "2=已发布；0/5/6=全部；4=仅我可见"
 }
