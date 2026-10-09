@@ -2,7 +2,7 @@
  * 一次性探测：作品管理页到底发了哪些 JSON 接口（用于校准 verify.json 的 feedApiMatch）。
  * 只读，不写入任何数据。
  *
- * 用法：node tools/probe-content-feed.mjs --account n1
+ * 用法：node tools/probe-content-feed.mjs --account <账号名>
  */
 import { launchBrowser, closeBrowser, sleep, waitForStable, dismissOverlays } from '../src/browser.js';
 import { ensureLoggedIn } from '../src/auth-guard.js';

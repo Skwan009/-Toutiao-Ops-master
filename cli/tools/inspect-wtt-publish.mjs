@@ -1,4 +1,8 @@
-import { launchBrowser, closeBrowser, sleep } from './src/browser.js';
+/**
+ * 一次性：抓取微头条发布页全文与「首发」相关元素结构，落盘 cli/output/（只读）。
+ * 用法：在 cli/ 目录执行 node tools/inspect-wtt-publish.mjs
+ */
+import { launchBrowser, closeBrowser, sleep } from '../src/browser.js';
 import { writeFileSync, mkdirSync } from 'fs';
 
 const OUT_DIR = './output';

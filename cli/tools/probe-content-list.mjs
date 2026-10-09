@@ -2,7 +2,7 @@
  * 一次性探测：确认 creator_center/list/v2 的 status / type / page 参数编码与返回结构。
  * 只读，不写入任何数据。产物落 cli/output/probe/。
  *
- * 用法：node tools/probe-content-list.mjs --account n1
+ * 用法：node tools/probe-content-list.mjs --account <账号名>
  */
 import { launchBrowser, closeBrowser, browserFetch, sleep } from '../src/browser.js';
 import { ensureLoggedIn } from '../src/auth-guard.js';

@@ -2,7 +2,7 @@
 /**
  * 只读探测：头条创作者后台「消息中心」结构勘察
  * 目的：拿到消息中心的真实 URL / 接口端点 / DOM 结构，作为 src/message-center.js 的实现依据。
- * 用法：node tools/probe-message-center.mjs --account n1 [--headless] [--wait 8000]
+ * 用法：node tools/probe-message-center.mjs --account <账号名> [--headless] [--wait 8000]
  * 边界：只导航 + 扫描 + 点击消息入口；绝不输入文本、绝不提交表单、绝不发布。
  */
 import { launchBrowser, closeBrowser, sleep, waitForStable, dismissOverlays } from '../src/browser.js';

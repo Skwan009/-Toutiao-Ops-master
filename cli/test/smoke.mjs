@@ -277,6 +277,13 @@ async function main() {
     assert(offenders.length === 0, `仍在引用包内 output/：${offenders.join(', ')}`);
   });
 
+  await check('cli/ 根目录只放 index.js（临时脚本归入 tools/）', () => {
+    const stray = readdirSync(CLI_DIR, { withFileTypes: true })
+      .filter((e) => e.isFile() && /\.(mjs|js)$/.test(e.name) && e.name !== 'index.js')
+      .map((e) => e.name);
+    assert(stray.length === 0, `cli/ 根目录出现临时脚本：${stray.join(', ')}`);
+  });
+
   await check('落盘模块统一经 src/paths.js', () => {
     const expect = ['verify.js', 'topic-recommend.js', join('signals', 'external-hot.js')];
     const bad = [];

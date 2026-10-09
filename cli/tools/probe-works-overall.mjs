@@ -2,7 +2,7 @@
 /**
  * 只读探测：创作中心「数据 - 作品数据」单篇明细接口
  * 目的：找到能返回「单篇作品（标题/阅读/展现/点赞）」的站内接口，作为 works-analytics 信号源的实现依据。
- * 用法：node tools/probe-works-overall.mjs --account n1 [--headless]
+ * 用法：node tools/probe-works-overall.mjs --account <账号名> [--headless]
  * 边界：只导航 + 扫描 + 滚动，绝不输入文本、不提交表单、不发布。
  */
 import { launchBrowser, closeBrowser, sleep, waitForStable, dismissOverlays } from '../src/browser.js';

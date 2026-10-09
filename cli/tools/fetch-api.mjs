@@ -7,11 +7,11 @@
 import { launchBrowser, closeBrowser, browserFetch } from '../src/browser.js';
 import { ensureLoggedIn } from '../src/auth-guard.js';
 
-const account = process.argv[2] || 'n1';
+const account = process.argv[2];
 const url = process.argv[3];
 const full = process.argv.includes('--full');
 
-if (!url) {
+if (!account || !url) {
   console.error('用法: node tools/fetch-api.mjs <account> <url> [--full]');
   process.exit(1);
 }
