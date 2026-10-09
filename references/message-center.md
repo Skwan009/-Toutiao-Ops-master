@@ -4,7 +4,7 @@
 
 拉取头条号创作者后台「消息中心」的官方推送与互动消息，结构化输出话题邀请、活动通知、作者成长助手、系统通知、服务通知、评论和@、点赞、粉丝等内容。
 
-采用**直接调用站内接口**（POST + JSON，仅依赖登录态），不依赖页面渲染，比 DOM 抓取稳定。
+采用直接调用站内接口（POST + JSON，仅依赖登录态），不依赖页面渲染，比 DOM 抓取稳定。
 
 ## 命令
 
@@ -37,7 +37,7 @@ toutiao-ops message-center [--type <type>] [--box-type <n>] [--all]
 | 1005 | `digg` | 点赞 | interact | 辅助 |
 | 1002 | `fans` | 粉丝 | interact | 辅助 |
 
-## 数据来源（站内接口）
+## 数据来源
 
 | 接口 | 方法 | 请求体 | 作用 |
 |------|------|--------|------|
@@ -50,32 +50,25 @@ toutiao-ops message-center [--type <type>] [--box-type <n>] [--all]
 |------|------|
 | `type` / `label` | 语义名 / 中文名 |
 | `channel` | `official`（官方推送）/ `interact`（互动） |
-| `tier` / `weight` | 权重层级与数值（见 `config/message-types.json`） |
-| `title` | 动作文案（如「赞了我的微头条」） |
-| `text` | 正文（话题邀请为完整邀请文案） |
-| `topic` | 话题名（仅话题邀请，从 `#话题#` 提取） |
-| `forumId` | 话题 forum_id（仅话题邀请） |
-| `actionUrl` | 跳转/发文链接（`sslocal://` 协议） |
+| `tier` / `weight` | 权重层级与数值，见 `config/weights.json` |
+| `title` | 动作文案，如"赞了我的微头条" |
+| `text` | 正文，话题邀请为完整邀请文案 |
+| `topic` | 话题名，仅话题邀请，从 `#话题#` 提取 |
+| `forumId` | 话题 forum_id，仅话题邀请 |
+| `actionUrl` | 跳转 / 发文链接（`sslocal://` 协议） |
 | `sender` | 发送者 `{ name, userId, relation, relationLabel, tags }` |
 | `createTime` / `createEpoch` | 消息时间（ISO / 秒级时间戳） |
 | `deadline` / `deadlineSource` | 截止时间。站内接口未提供，固定为 `null` / `unavailable` |
-| `messageType` | 站内消息类型（来自 `log_pb.message_type`） |
+| `messageType` | 站内消息类型，来自 `log_pb.message_type` |
 
 ## 示例
 
 ```bash
-# 默认：官方推送五类
-toutiao-ops message-center
-
-# 只看话题邀请
-toutiao-ops message-center --type topic_invite
-
-# 等价写法（中文 / 数字）
-toutiao-ops message-center --type 话题邀请
-toutiao-ops message-center --box-type 1025
-
-# 含互动类，每类翻 3 页
-toutiao-ops message-center --all --max-pages 3
+toutiao-ops message-center                       # 默认官方五类
+toutiao-ops message-center --type topic_invite   # 只看话题邀请
+toutiao-ops message-center --type 话题邀请        # 中文等价写法
+toutiao-ops message-center --box-type 1025       # 数字等价写法
+toutiao-ops message-center --all --max-pages 3   # 含互动类，每类翻 3 页
 ```
 
 ## 输出示例
@@ -95,8 +88,8 @@ toutiao-ops message-center --all --max-pages 3
       "type": "topic_invite",
       "label": "话题邀请",
       "tier": 1,
-      "topic": "能送给我一句处在低谷期激励的话吗",
-      "forumId": "1685142752047165",
+      "topic": "<话题名>",
+      "forumId": "1234567890123456",
       "createTime": "2026-10-07T10:05:35.000Z"
     }
   ]
@@ -107,4 +100,4 @@ toutiao-ops message-center --all --max-pages 3
 
 - 结构化获取平台官方推送，不再依赖 `innerText` 截断
 - 抓取话题邀请的 `topic` / `forumId`，直接对接发文
-- 作为推荐引擎的一级权重信号源（见 `src/signals/base.js`）
+- 作为选题信号的一级来源，见 `src/signals/base.js`

@@ -64,6 +64,8 @@ async function fetchLatestVersion() {
 }
 
 export async function checkForUpdates() {
+  // 自动化场景可关闭外呼：TOUTIAO_OPS_NO_UPDATE_CHECK=1 或 TOUTIAO_OPS_OFFLINE=1
+  if (process.env.TOUTIAO_OPS_NO_UPDATE_CHECK === '1' || process.env.TOUTIAO_OPS_OFFLINE === '1') return;
   try {
     const currentVersion = getCurrentVersion();
     const cache = readCache();

@@ -46,10 +46,10 @@ toutiao-ops [--account <name>] auth check
 {
   "logged_in": true,
   "account": "default",
-  "username": "番茄3580433091797615",
+  "username": "<账号昵称>",
   "avatar": "https://sf3-cdn-tos.toutiaostatic.com/img/...",
-  "userId": "3580433091797615",
-  "profileUrl": "https://www.toutiao.com/c/user/3580433091797615/",
+  "userId": "<userId>",
+  "profileUrl": "https://www.toutiao.com/c/user/<userId>/",
   "url": "https://mp.toutiao.com/profile_v4/index"
 }
 ```
@@ -90,9 +90,9 @@ toutiao-ops [--account <name>] auth login
   "logged_in": true,
   "account": "default",
   "message": "登录成功，会话已保存",
-  "username": "番茄3580433091797615",
+  "username": "<账号昵称>",
   "avatar": "https://sf3-cdn-tos.toutiaostatic.com/img/...",
-  "userId": "3580433091797615"
+  "userId": "<userId>"
 }
 ```
 

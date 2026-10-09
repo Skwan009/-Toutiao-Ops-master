@@ -23,16 +23,23 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
+      # 必须先按 lock 安装：npm ci 要求 package.json 与 lock 完全一致，
+      # 而下面「Sync version from tag」会改 package.json 的版本号，顺序不能颠倒
+      - name: Install dependencies
+        working-directory: cli
+        run: npm ci --ignore-scripts
+
+      # 发布前先过冒烟测试，避免把坏版本推上 npm
+      - name: Smoke test (offline)
+        working-directory: cli
+        run: npm test
+
       - name: Sync version from tag
         working-directory: cli
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
           echo "Publishing version: $TAG"
           npm version "$TAG" --no-git-tag-version --allow-same-version
-
-      - name: Install dependencies
-        working-directory: cli
-        run: npm install --ignore-scripts
 
       - name: Publish to npm
         working-directory: cli
@@ -43,12 +50,15 @@ jobs:
       - name: Publish to GitHub Packages
         working-directory: cli
         run: |
-          echo "@jiulingyun:registry=https://npm.pkg.github.com" > ~/.npmrc
+          # scope 必须等于仓库 owner（GitHub Packages 规则），用仓库变量而不是硬编码，
+          # 这样 fork/改名后不会因为 owner 不匹配而失败；npm scope 要求全小写
+          export OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "@${OWNER}:registry=https://npm.pkg.github.com" > ~/.npmrc
           echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> ~/.npmrc
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf-8'));
-            pkg.name = '@jiulingyun/toutiao-ops';
+            pkg.name = '@' + process.env.OWNER + '/toutiao-ops';
             pkg.publishConfig = { registry: 'https://npm.pkg.github.com' };
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
           "

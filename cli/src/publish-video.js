@@ -1,13 +1,20 @@
-import { launchBrowser, closeBrowser, sleep, waitForStable, dismissOverlays } from './browser.js';
+import { launchBrowser, closeBrowser, sleep, waitForStable, dismissOverlays, getScreenshotDir } from './browser.js';
 import { ensureLoggedIn } from './auth-guard.js';
+import { verifyPublishOnPage, failureResult } from './publish-verify.js';
+import { mkdirSync } from 'fs';
 
 const UPLOAD_URL = 'https://mp.toutiao.com/profile_v4/xigua/upload-video';
+
+// 调试模式（--debug）才落全页截图与步骤日志，默认不产生额外文件与 stderr 噪声
+let debug = false;
+const dbg = (obj) => { if (debug) console.error(JSON.stringify(obj)); };
 
 /**
  * 发布视频。
  * 流程：上传视频 -> 等待上传完成 -> 填写基本信息 -> 高级设置 -> 发布/存草稿。
  */
 export async function publishVideo(opts) {
+  debug = Boolean(opts.debug);
   const { context, page } = await launchBrowser(opts);
   try {
     await ensureLoggedIn(page);
@@ -126,14 +133,15 @@ export async function publishVideo(opts) {
     // ═══════════════════════════════════
     await dismissOverlays(page);
 
-    // 调试截图：发布前状态
-    const { getScreenshotDir } = await import('./browser.js');
-    const { mkdirSync } = await import('fs');
-    const debugDir = getScreenshotDir(opts.account);
-    mkdirSync(debugDir, { recursive: true });
-    const beforePath = `${debugDir}/video-before-publish-${Date.now()}.png`;
-    await page.screenshot({ path: beforePath, fullPage: true });
-    console.error(JSON.stringify({ debug_before: beforePath }));
+    // 调试截图：仅在 --debug 下落盘，避免每次发布都写两张全页图
+    let debugDir = null;
+    if (debug) {
+      debugDir = getScreenshotDir(opts.account);
+      mkdirSync(debugDir, { recursive: true });
+      const beforePath = `${debugDir}/video-before-publish-${Date.now()}.png`;
+      await page.screenshot({ path: beforePath, fullPage: true });
+      dbg({ debug_before: beforePath });
+    }
 
     if (opts.draft) {
       const draftBtn = page.locator('button:has-text("存草稿")').first();
@@ -152,15 +160,24 @@ export async function publishVideo(opts) {
     await waitForStable(page);
 
     // 调试截图：发布后状态
-    const afterPath = `${debugDir}/video-after-publish-${Date.now()}.png`;
-    await page.screenshot({ path: afterPath, fullPage: true });
-    console.error(JSON.stringify({ debug_after: afterPath, final_url: page.url() }));
+    if (debugDir) {
+      const afterPath = `${debugDir}/video-after-publish-${Date.now()}.png`;
+      await page.screenshot({ path: afterPath, fullPage: true });
+      dbg({ debug_after: afterPath, final_url: page.url() });
+    }
+
+    // 发布后验证：页面出现拦截提示视为未真正发布（视频页无 contenteditable，主要靠提示正则）
+    const verify = await verifyPublishOnPage(page);
+    if (!verify.reallyPublished) {
+      return failureResult(opts.draft ? 'draft' : 'publish', verify, { title: opts.title });
+    }
 
     return {
       success: true,
       action: opts.draft ? 'draft_saved' : 'published',
       title: opts.title,
       url: page.url(),
+      verified: true,
     };
   } finally {
     await closeBrowser(context);
@@ -297,10 +314,10 @@ async function useFrameCover(page) {
     // 步骤1：点击"下一步" → 进入封面编辑
     const nextBtn = page.locator('text=下一步').first();
     const nextVisible = await nextBtn.isVisible().catch(() => false);
-    console.error(JSON.stringify({ step: 'cover', next_visible: nextVisible }));
+    dbg({ step: 'cover', next_visible: nextVisible });
 
     if (!nextVisible) {
-      console.error('未找到"下一步"按钮，跳过封面设置');
+      console.error('[WARN] 未找到"下一步"按钮，跳过封面设置');
       return;
     }
 
@@ -310,7 +327,7 @@ async function useFrameCover(page) {
     // 步骤2：封面编辑页 → 点击底部红色"确定"按钮（触发二次确认弹窗）
     // 使用 Playwright locator（可穿透 Shadow DOM）
     let okCount = await page.locator('text="确定"').count();
-    console.error(JSON.stringify({ step: 'editing_ok', ok_count: okCount }));
+    dbg({ step: 'editing_ok', ok_count: okCount });
 
     // 从最后一个（最上层）开始尝试点击
     let clicked = false;
@@ -318,7 +335,7 @@ async function useFrameCover(page) {
       const btn = page.locator('text="确定"').nth(i);
       const vis = await btn.isVisible().catch(() => false);
       if (vis) {
-        console.error(JSON.stringify({ step: 'editing_ok_click', index: i }));
+        dbg({ step: 'editing_ok_click', index: i });
         await btn.click({ force: true, timeout: 5000 });
         clicked = true;
         break;
@@ -332,14 +349,14 @@ async function useFrameCover(page) {
 
     // 步骤3：二次确认弹窗 "完成后无法继续编辑，是否确定完成？" → 点击"确定"
     okCount = await page.locator('text="确定"').count();
-    console.error(JSON.stringify({ step: 'confirm_popup', ok_count: okCount }));
+    dbg({ step: 'confirm_popup', ok_count: okCount });
 
     clicked = false;
     for (let i = okCount - 1; i >= 0; i--) {
       const btn = page.locator('text="确定"').nth(i);
       const vis = await btn.isVisible().catch(() => false);
       if (vis) {
-        console.error(JSON.stringify({ step: 'confirm_popup_click', index: i }));
+        dbg({ step: 'confirm_popup_click', index: i });
         await btn.click({ force: true, timeout: 5000 });
         clicked = true;
         break;
@@ -350,20 +367,20 @@ async function useFrameCover(page) {
     }
 
     // 步骤4：等待封面图片上传完成（对话框自动关闭）
-    console.error(JSON.stringify({ step: 'waiting_cover_upload' }));
+    dbg({ step: 'waiting_cover_upload' });
     await sleep(3000, 5000);
     // 轮询检查对话框是否关闭（最长等 30 秒）
     const uploadStart = Date.now();
     while (Date.now() - uploadStart < 30000) {
       const dialogVisible = await page.locator('text=封面编辑').first().isVisible().catch(() => false);
       if (!dialogVisible) {
-        console.error(JSON.stringify({ step: 'cover_dialog_closed' }));
+        dbg({ step: 'cover_dialog_closed' });
         break;
       }
       await sleep(2000, 3000);
     }
   } catch (e) {
-    console.error(JSON.stringify({ cover_error: e.message }));
+    console.error('[WARN] 封面设置异常：' + e.message);
   }
 }
 

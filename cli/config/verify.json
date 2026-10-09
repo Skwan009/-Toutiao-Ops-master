@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "note": "发布后核验配置。作品流走管理页「接口拦截」（无需自造签名参数，直连该接口会 errno:20100）。",
+  "note": "发布后核验配置。作品流优先拦截管理页的 mp_provider 接口；拦截不到时用 creator_center/list/v2 单次请求兜底（同页自造请求只有第一条能成功，故与总数合并为一次）。",
   "pages": {
     "content": "https://mp.toutiao.com/profile_v4/manage/content/all",
     "draft": "https://mp.toutiao.com/profile_v4/manage/draft"
@@ -10,5 +10,6 @@
   "countApi": "https://mp.toutiao.com/mp/agw/creator_center/list/v2",
   "countStatus": 2,
   "appId": 1231,
+  "pageSize": 50,
   "note_countStatus": "2=已发布；0/5/6=全部；4=仅我可见"
 }

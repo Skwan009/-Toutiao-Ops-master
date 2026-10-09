@@ -1,4 +1,4 @@
-import { launchBrowser, closeBrowser, browserFetch } from './browser.js';
+import { launchBrowser, closeBrowser, browserFetch, sleep } from './browser.js';
 import { ensureLoggedIn } from './auth-guard.js';
 import { defineSignal } from './signals/base.js';
 import { readFileSync } from 'fs';
@@ -33,13 +33,27 @@ function safeJson(s) {
   try { return JSON.parse(s); } catch { return null; }
 }
 
-/** 页内 POST JSON（自动带真实 Cookie） */
-async function postJson(page, url, body) {
-  return browserFetch(page, url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body || {}),
-  });
+/**
+ * 页内 POST JSON（自动带真实 Cookie）。
+ * 站点安全 SDK 会间歇性拦截自造请求（TypeError: Failed to fetch），故失败退避重试一次。
+ * 这些 POST 都是只读查询，重试安全。
+ */
+async function postJson(page, url, body, retries = 1) {
+  let res = null;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      res = await browserFetch(page, url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      if (res && res.ok) return res;
+    } catch {
+      res = null;
+    }
+    if (i < retries) await sleep(1200, 2200);
+  }
+  return res;
 }
 
 /** 拉取分类目录（boxes + pin） */

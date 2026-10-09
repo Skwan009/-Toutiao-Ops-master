@@ -1,74 +1,61 @@
-import { launchBrowser, closeBrowser, sleep, browserFetch, waitForStable, dismissOverlays } from './browser.js';
+import { launchBrowser, closeBrowser } from './browser.js';
 import { ensureLoggedIn } from './auth-guard.js';
+import { fetchWorks, countersOf, SAFE_PAGE_SIZE } from './works-api.js';
 
-const CONTENT_PAGE = 'https://mp.toutiao.com/profile_v4/manage/content/all';
-
-const TYPE_MAP = {
-  all: '',
-  article: 'article',
-  video: 'video',
-  weitoutiao: 'weitoutiao',
-};
-
-const STATUS_MAP = {
-  published: 'published',
-  reviewing: 'reviewing',
-  rejected: 'rejected',
-};
+/** 接口条目 → 列表项 */
+function toListItem(item) {
+  const a = item.article_attr || {};
+  const s = item.article_stat || {};
+  const counters = countersOf(s);
+  return {
+    id: a.item_id != null ? String(a.item_id) : '',
+    title: a.title || '',
+    type: a.type ?? null,
+    typeDesc: a.type_desc || '',
+    status: a.status ?? null,
+    statusDesc: a.status_desc || '',
+    visibilityLevel: a.visibility_level ?? null,
+    createTime: a.create_time ? new Date(a.create_time * 1000).toISOString() : '',
+    stats: {
+      impression: s.impression_count ?? counters['展现'] ?? 0,
+      read: s.go_detail_count ?? counters['阅读'] ?? 0,
+      comment: s.comment_count ?? counters['评论'] ?? 0,
+      digg: s.digg_count ?? counters['点赞'] ?? 0,
+    },
+  };
+}
 
 /**
  * 获取作品列表。
- * 导航到内容管理页后，通过拦截 + 浏览器内 fetch 获取结构化数据。
+ *
+ * 走作品列表接口单次拉取（`src/works-api.js`），不再依赖"导航 + 拦截页面请求"：
+ * 作品管理页在部分环境下不渲染作品、也不发列表请求，纯拦截会得到空列表。
+ *
+ * 范围固定为「已发布 + 全部类型」（接口 `status=2&type=0`）；`--limit` 即 `page_size`。
+ * 需要按时间范围看数据用 `analytics works`，需要单篇详情用 `analytics content-detail`。
  */
-export async function listContent(opts) {
+export async function listContent(opts = {}) {
+  const parsed = Number.parseInt(opts.limit, 10);
+  const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
+
   const { context, page } = await launchBrowser(opts);
   try {
     await ensureLoggedIn(page);
 
-    const apiResponses = [];
-    page.on('response', async (response) => {
-      const url = response.url();
-      if (url.includes('/pgc/ma/') && url.includes('content') || url.includes('/api/') && url.includes('article')) {
-        try {
-          const json = await response.json();
-          apiResponses.push({ url, data: json });
-        } catch {}
-      }
-    });
-
-    await page.goto(CONTENT_PAGE, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await waitForStable(page);
-    await sleep(2000, 3000);
-    await dismissOverlays(page);
-
-    if (apiResponses.length > 0) {
-      return {
-        success: true,
-        source: 'api_intercept',
-        items: apiResponses.map(r => r.data),
-        count: apiResponses.length,
-      };
-    }
-
-    // 回退：从 DOM 提取
-    const items = await page.evaluate(() => {
-      const rows = document.querySelectorAll('[class*="content-item"], [class*="article-item"], table tbody tr, [class*="list"] > div[class*="item"]');
-      return Array.from(rows).map(row => {
-        const title = row.querySelector('[class*="title"] a, [class*="title"] span, td:first-child a')?.textContent?.trim() || '';
-        const status = row.querySelector('[class*="status"], [class*="state"]')?.textContent?.trim() || '';
-        const reads = row.querySelector('[class*="read"], [class*="view"]')?.textContent?.trim() || '';
-        const comments = row.querySelector('[class*="comment"]')?.textContent?.trim() || '';
-        const time = row.querySelector('[class*="time"], [class*="date"], time')?.textContent?.trim() || '';
-        return { title, status, reads, comments, time };
-      }).filter(i => i.title);
-    });
+    // 固定请求大页再本地截断：小 page_size 会被安全 SDK 拦截
+    const data = await fetchWorks(page, { status: 2, type: 0, pageSize: SAFE_PAGE_SIZE });
+    const all = (data.contents || []).map(toListItem);
+    const items = all.slice(0, limit);
 
     return {
+      schemaVersion: '1.0.0',
       success: true,
-      source: 'dom_scrape',
-      items,
+      source: 'api_fetch',
+      filter: { status: 2, type: 0, limit },
+      total: data.total_count ?? null,
+      fetched: all.length,
       count: items.length,
-      page: parseInt(opts.page) || 1,
+      items,
     };
   } finally {
     await closeBrowser(context);

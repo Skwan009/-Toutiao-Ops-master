@@ -166,7 +166,7 @@ npx toutiao-ops auth list
 
 ## 环境要求
 
-- Node.js >= 18
+- Node.js >= 20（依赖 `marked@17` 的最低要求）
 - macOS / Linux / Windows
 - 首次登录需要显示器环境（扫码），后续可 `--headless` 运行
 

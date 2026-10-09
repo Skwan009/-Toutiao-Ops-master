@@ -1,12 +1,11 @@
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { homedir } from 'os';
 import { join } from 'path';
 import { mkdirSync } from 'fs';
+import { BASE_DIR } from './paths.js';
 
 chromium.use(StealthPlugin());
 
-const BASE_DIR = join(homedir(), '.toutiao-ops');
 const DEFAULT_ACCOUNT = 'default';
 
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
@@ -18,11 +17,19 @@ const LAUNCH_ARGS = [
   '--disable-infobars',
 ];
 
+// 账号名白名单，避免 --account 携带路径分隔符穿越出 BASE_DIR
+const ACCOUNT_NAME_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
 /**
  * 获取指定账号的数据目录路径。
+ * 账号名做了白名单校验，非法名称直接抛错（不再拼进路径）。
  */
 export function getAccountDir(account) {
-  return join(BASE_DIR, 'accounts', account || DEFAULT_ACCOUNT);
+  const name = account || DEFAULT_ACCOUNT;
+  if (!ACCOUNT_NAME_RE.test(name)) {
+    throw new Error(`账号名不合法：${name}（仅允许字母、数字、下划线、连字符，长度 1-64）`);
+  }
+  return join(BASE_DIR, 'accounts', name);
 }
 
 /**

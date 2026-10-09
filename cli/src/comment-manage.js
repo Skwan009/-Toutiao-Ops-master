@@ -32,15 +32,15 @@ export async function listComments(opts) {
     await dismissOverlays(page);
 
     // 优先使用 API 数据
-    const apiComments = apiData.flatMap(d => d?.data || []).filter(c => c.id_str);
+    const apiComments = apiData.flatMap(pickComments).filter(c => c.id_str);
     if (apiComments.length > 0) {
       const comments = apiComments.map(formatApiComment);
 
-      // 如果需要获取子评论
+      // 需要子评论时，按评论正文定位对应 DOM 节点，不依赖下标对应
       if (opts.withReplies) {
-        for (let i = 0; i < comments.length; i++) {
-          if (comments[i].replyCount > 0) {
-            comments[i].replies = await extractRepliesForComment(page, i);
+        for (const comment of comments) {
+          if (comment.replyCount > 0) {
+            comment.replies = await extractRepliesForComment(page, comment);
           }
         }
       }
@@ -205,6 +205,15 @@ export async function replyComment(opts) {
 
 // ── 内部辅助函数 ──
 
+/** 从一个响应体里取出评论数组；data 可能是数组，也可能是含 comments / comment_list 的对象 */
+function pickComments(resp) {
+  const data = resp && resp.data;
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.comments)) return data.comments;
+  if (data && Array.isArray(data.comment_list)) return data.comment_list;
+  return [];
+}
+
 function formatApiComment(c) {
   return {
     id: c.id_str,
@@ -267,13 +276,19 @@ async function selectComment(page, commentId) {
 
 /**
  * 从右侧面板提取指定评论的子评论（回复）。
- * 需要先点击左侧第 index 条评论。
+ * 按评论正文片段定位左侧列表项（API 顺序与 DOM 顺序不保证一致，不能用下标）。
  */
-async function extractRepliesForComment(page, index) {
+async function extractRepliesForComment(page, comment) {
+  const key = String(comment.content || '').slice(0, 20);
   const items = await page.$$('.all-comment-item-wrap');
-  if (index >= items.length) return [];
+  let target = null;
+  for (const item of items) {
+    const text = await item.evaluate((el) => el.innerText).catch(() => '');
+    if (key && text.includes(key)) { target = item; break; }
+  }
+  if (!target) return [];
 
-  await items[index].click();
+  await target.click();
   await sleep(1500, 2000);
 
   return page.evaluate(() => {

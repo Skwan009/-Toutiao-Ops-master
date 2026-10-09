@@ -1,4 +1,4 @@
-import { launchBrowser, closeBrowser, sleep, browserFetch, waitForStable, dismissOverlays } from './browser.js';
+import { launchBrowser, closeBrowser, sleep, waitForStable, dismissOverlays } from './browser.js';
 import { ensureLoggedIn } from './auth-guard.js';
 
 const WORKS_URLS = {

@@ -73,7 +73,7 @@ toutiao-ops analytics content-detail [--content-id "作品ID"] [--content-type 2
 {
   "success": true,
   "category": "content_detail",
-  "contentId": "7623453165358170664",
+  "contentId": "1234567890123456789",
   "contentType": "2",
   "source": "api_fetch",
   "data": {

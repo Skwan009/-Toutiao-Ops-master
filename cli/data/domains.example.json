@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "note": "账号领域库示例（仅演示结构）。真实域库请另存 domains.json，不入库。",
+  "note": "账号领域库示例。真实域库请另存 domains.json（不入库）。注意：回退到本文件时漏斗会标记 degraded（且 activeDomains 中缺失的领域会被静默忽略），topic-recommend 默认拒绝输出推荐。",
   "domains": {
     "life": {
       "label": "生活纪实",
@@ -9,6 +9,10 @@
     "emotion": {
       "label": "情感共鸣",
       "keywords": ["低谷", "坚持", "勇气", "亲情", "鼓励", "人间", "体面"]
+    },
+    "season": {
+      "label": "时令 / 节点话题",
+      "keywords": ["中秋", "国庆", "入秋", "秋日", "春节", "开学", "假期", "立冬"]
     }
   }
 }

@@ -2,6 +2,7 @@ import { defineSignal } from './base.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { BASE_DIR } from '../paths.js';
 
 /**
  * 外部热点信号源（二级权重）——纯 Node fetch，不用浏览器。
@@ -11,7 +12,7 @@ import { fileURLToPath } from 'url';
  */
 const HERE = dirname(fileURLToPath(import.meta.url));            // cli/src/signals
 const CONFIG_PATH = join(HERE, '..', '..', 'config', 'providers.json');
-const CACHE_DIR = join(HERE, '..', '..', 'output', 'cache');
+const CACHE_DIR = join(BASE_DIR, 'cache');
 const SCHEMA_VERSION = '1.0.0';
 
 function loadProviders() {

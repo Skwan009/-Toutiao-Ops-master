@@ -3,6 +3,10 @@ import { ensureLoggedIn } from './auth-guard.js';
 
 const PUBLISH_URL = 'https://mp.toutiao.com/profile_v4/weitoutiao/publish';
 
+// 全选 / 行尾快捷键在 macOS 用 Cmd，其它平台用 Ctrl
+const SELECT_ALL = process.platform === 'darwin' ? 'Meta+a' : 'Control+a';
+const LINE_END = process.platform === 'darwin' ? 'Meta+End' : 'Control+End';
+
 /**
  * 发布微头条。
  * 参数:
@@ -37,7 +41,7 @@ export async function publishWeitoutiao(opts) {
     // 头条发布页会自动恢复上次未发布的内容作为草稿。若不清空，重试发布时
     // 新正文会直接叠在旧正文上，导致"两篇内容粘在一起"。
     // 症状：回执 success:true 但作品列表里根本没有这条内容。
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press(SELECT_ALL);
     await sleep(150, 300);
     await page.keyboard.press('Delete');
     await sleep(300, 500);
@@ -50,7 +54,7 @@ export async function publishWeitoutiao(opts) {
         }, editorSelector)
         .catch(() => 0);
       if (!still) break;
-      await page.keyboard.press('Control+a');
+      await page.keyboard.press(SELECT_ALL);
       await sleep(150, 250);
       await page.keyboard.press('Delete');
       await sleep(300, 500);
@@ -203,7 +207,7 @@ async function setTopic(page, topicName) {
       'textarea',
     ].join(', ');
     await page.click(editorSelector, { force: true }).catch(() => {});
-    await page.keyboard.press('Control+End');
+    await page.keyboard.press(LINE_END);
     await sleep(150, 300);
     // 新起一行，避免黏在正文末尾文字上
     await page.keyboard.press('Enter');

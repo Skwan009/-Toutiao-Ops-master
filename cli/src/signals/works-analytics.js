@@ -1,36 +1,26 @@
-import { launchBrowser, closeBrowser, browserFetch } from '../browser.js';
+import { launchBrowser, closeBrowser } from '../browser.js';
 import { ensureLoggedIn } from '../auth-guard.js';
 import { defineSignal } from './base.js';
+import { fetchWorks, countersOf } from '../works-api.js';
 
 /**
  * 作品数据信号源（一级权重）——「数据 - 作品数据 / 作品列表」。
  *
- * 数据来自站内接口（返回 text/plain 包裹的 JSON）：
+ * 数据来自站内接口（返回 text/plain 包裹的 JSON），走 `src/works-api.js` 统一封装：
  *   /mp/agw/creator_center/list/v2?status=2&type=0&page_size=N&need_stat=true&wenda_type=1&app_id=1231
  * 每条含 article_attr.title / type_desc 与 article_stat 的 展现/阅读/评论/点赞。
  */
-const LIST_URL = (n) =>
-  `https://mp.toutiao.com/mp/agw/creator_center/list/v2?status=2&type=0&page_size=${n}&need_stat=true&wenda_type=1&app_id=1231`;
-
-async function fetchWorks(page, pageSize) {
-  const res = await browserFetch(page, LIST_URL(pageSize));
-  let data = res && res.data;
-  if (typeof data === 'string') {
-    try { data = JSON.parse(data); } catch {}
-  }
-  return data || {};
-}
 
 function normalize(item) {
   const attr = item.article_attr || {};
   const stat = item.article_stat || {};
-  const counters = {};
-  (stat.counters || []).forEach((c) => { counters[c.Name] = c.Count; });
+  const counters = countersOf(stat);
   return {
     kind: 'work',
     source: 'works-analytics',
     title: attr.title || '',
     abstract: attr.abstract || '',
+    epoch: attr.create_time || null,
     type: attr.type ?? null,
     typeDesc: attr.type_desc || '',
     stats: {

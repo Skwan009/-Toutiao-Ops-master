@@ -17,5 +17,16 @@
       "weight": 0.2,
       "desc": "系统通知 / 服务通知 / 互动消息"
     }
+  },
+  "ranking": {
+    "note": "topic-recommend 打分：base = Σ(分量归一值 × 权重)，score = base × 层级权重（tierMode=multiplier）。层级作乘数是为了保证「站外权重低于站内」这条硬约束。",
+    "components": {
+      "domain": 0.45,
+      "heat": 0.30,
+      "fresh": 0.25
+    },
+    "tierMode": "multiplier",
+    "freshHalfLifeHours": 72,
+    "topN": 20
   }
 }

@@ -12,6 +12,7 @@ import { listInspiration } from './src/inspiration.js';
 import { listMessages } from './src/message-center.js';
 import { listTopicSignals } from './src/topic-signals.js';
 import { verifyPublish } from './src/verify.js';
+import { recommendTopics } from './src/topic-recommend.js';
 import { checkForUpdates } from './src/update-check.js';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -70,8 +71,8 @@ publish
   .option('--content <content>', '文章正文')
   .option('--content-file <path>', '从文件读取正文（支持 .md 文件自动识别为 Markdown）')
   .option('--format <format>', '正文格式: text（纯文本）/ markdown（富文本排版）', 'markdown')
-  .requiredOption('--cover <path>', '封面图片路径（必填，单图模式）')
-  .option('--cover-mode <mode>', '封面模式: single / triple / none', 'single')
+  .option('--cover <path>', '封面图片路径（--cover-mode single / triple 时必填）')
+  .option('--cover-mode <mode>', '封面模式: single / triple / none（none 时无需 --cover）', 'single')
   .option('--first-publish', '勾选"头条首发"')
   .option('--collection <name>', '添加至合集名称')
   .option('--no-weitoutiao', '取消"同时发布微头条"（默认开启）')
@@ -95,6 +96,7 @@ publish
   .option('--declaration <items>', '作品声明，逗号分隔: 取自站外,引用站内,自行拍摄,AI生成,虚构演绎,投资观点,健康医疗')
   .option('--visibility <mode>', '谁可以看: public / fans / private', 'public')
   .option('--draft', '存为草稿而非直接发布')
+  .option('--debug', '落全页调试截图并输出步骤日志')
   .option('--headless', '无头模式运行')
   .action(async (opts) => {
     await run(publishVideo, opts);
@@ -119,11 +121,8 @@ const content = program.command('content');
 
 content
   .command('list')
-  .description('查看作品列表')
-  .option('--type <type>', '类型: article / video / weitoutiao / all', 'all')
-  .option('--status <status>', '状态: published / reviewing / rejected', 'published')
-  .option('--page <n>', '页码', '1')
-  .option('--limit <n>', '每页数量', '20')
+  .description('查看作品列表（已发布 + 全部类型）')
+  .option('--limit <n>', '返回条数（接口 page_size）', '20')
   .option('--headless', '无头模式运行')
   .action(async (opts) => {
     await run(listContent, opts);
@@ -135,8 +134,6 @@ const comment = program.command('comment');
 comment
   .command('list')
   .description('查看评论列表')
-  .option('--article-id <id>', '指定文章 ID')
-  .option('--page <n>', '页码', '1')
   .option('--with-replies', '同时获取每条评论的子评论/回复')
   .option('--headless', '无头模式运行')
   .action(async (opts) => {
@@ -168,7 +165,6 @@ const analytics = program.command('analytics');
 analytics
   .command('works')
   .description('查看作品数据')
-  .option('--period <period>', '时间范围: 7d / 30d', '7d')
   .option('--type <type>', '类型: all / article / video / weitoutiao', 'all')
   .option('--headless', '无头模式运行')
   .action(async (opts) => {
@@ -186,7 +182,6 @@ analytics
 analytics
   .command('income')
   .description('查看收益数据')
-  .option('--period <period>', '时间范围: 7d / 30d', '7d')
   .option('--type <type>', '类型: all / article / video', 'all')
   .option('--headless', '无头模式运行')
   .action(async (opts) => {
@@ -253,6 +248,21 @@ program
     await run(verifyPublish, opts);
   });
 
+// ── topic-recommend ──
+program
+  .command('topic-recommend')
+  .description('选题推荐：信号加权打分排序，输出 JSON + Markdown + 落盘')
+  .option('--top <n>', '输出条数（默认取 weights.json 的 ranking.topN）')
+  .option('--source <ids>', '指定信号源，逗号分隔：message-center,works-analytics,external-hot')
+  .option('--no-filter', '跳过三级漏斗（不过滤，直接对全部信号打分）')
+  .option('--allow-degraded', '漏斗降级（词表/域库缺失）时仍继续输出推荐')
+  .option('--limit <n>', '消息中心每页数量', '10')
+  .option('--max-pages <n>', '消息中心每分类最多翻页数', '1')
+  .option('--headless', '无头模式运行')
+  .action(async (opts) => {
+    await run(recommendTopics, opts);
+  });
+
 // ── runner ──
 async function run(fn, subOpts) {
   const updateCheck = checkForUpdates();
@@ -262,7 +272,9 @@ async function run(fn, subOpts) {
     const result = await fn(opts);
     await updateCheck;
     console.log(JSON.stringify(result, null, 2));
-    process.exit(0);
+    // 业务失败（success:false 或核验 verdict:fail）也返回非零退出码，便于脚本/Agent 判定
+    const failed = Boolean(result) && (result.success === false || result.verdict === 'fail');
+    process.exit(failed ? 1 : 0);
   } catch (err) {
     await updateCheck.catch(() => {});
     console.error(JSON.stringify({ error: err.message, stack: err.stack }, null, 2));

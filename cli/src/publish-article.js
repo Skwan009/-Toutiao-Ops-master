@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { marked } from 'marked';
 import { launchBrowser, closeBrowser, sleep, waitForStable, dismissOverlays } from './browser.js';
 import { ensureLoggedIn } from './auth-guard.js';
+import { verifyPublishOnPage, failureResult } from './publish-verify.js';
 
 const PUBLISH_URL = 'https://mp.toutiao.com/profile_v4/graphic/publish';
 const TITLE_MAX_LEN = 30;
@@ -13,8 +14,8 @@ const TITLE_MIN_LEN = 2;
  *   --title          文章标题（必填）
  *   --content        正文文本
  *   --content-file   从文件读取正文
- *   --cover          封面图片路径（必填，单图模式）
- *   --cover-mode     封面模式: single / triple / none（默认 single）
+ *   --cover          封面图片路径（--cover-mode single / triple 时必填）
+ *   --cover-mode     封面模式: single / triple / none（默认 single；none 时无需 --cover）
  *   --first-publish  勾选"头条首发"
  *   --collection     添加至合集名称
  *   --no-weitoutiao  取消"同时发布微头条"
@@ -22,6 +23,12 @@ const TITLE_MIN_LEN = 2;
  *   --draft          存草稿
  */
 export async function publishArticle(opts) {
+  // 封面是条件必填：--cover-mode none 时不需要。先校验再启动浏览器，避免白开一次。
+  const coverMode = opts.coverMode || 'single';
+  if (coverMode !== 'none' && !opts.cover) {
+    throw new Error('缺少封面图：--cover-mode single / triple 时必须提供 --cover <path>；若确实不要封面请加 --cover-mode none');
+  }
+
   const { context, page } = await launchBrowser(opts);
   try {
     await ensureLoggedIn(page);
@@ -128,11 +135,18 @@ export async function publishArticle(opts) {
     await sleep(2000, 4000);
     await waitForStable(page);
 
+    // 发布后验证：编辑器残留正文或出现拦截提示，都视为未真正发布
+    const verify = await verifyPublishOnPage(page);
+    if (!verify.reallyPublished) {
+      return failureResult('publish', verify, { title });
+    }
+
     return {
       success: true,
       action: 'published',
       title,
       url: page.url(),
+      verified: true,
     };
   } finally {
     await closeBrowser(context);
@@ -261,13 +275,14 @@ async function setDeclarations(page, declarationStr) {
 async function pasteMarkdownAsRichText(page, markdownContent, editorSelector) {
   const html = marked.parse(markdownContent, { breaks: true, gfm: true });
   await page.evaluate(
-    ({ html, selector }) => {
+    ({ html, text, selector }) => {
       const editor = document.querySelector(selector);
       if (!editor) return;
       editor.focus();
       const dt = new DataTransfer();
       dt.setData('text/html', html);
-      dt.setData('text/plain', editor.textContent);
+      // text/plain 必须填 markdown 源文；填编辑器当前内容（通常为空）会导致正文丢失
+      dt.setData('text/plain', text);
       const evt = new ClipboardEvent('paste', {
         clipboardData: dt,
         bubbles: true,
@@ -275,7 +290,7 @@ async function pasteMarkdownAsRichText(page, markdownContent, editorSelector) {
       });
       editor.dispatchEvent(evt);
     },
-    { html, selector: editorSelector },
+    { html, text: markdownContent, selector: editorSelector },
   );
   await sleep(500, 1000);
 }

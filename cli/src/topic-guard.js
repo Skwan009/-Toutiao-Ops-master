@@ -1,27 +1,26 @@
-import { readFileSync } from 'fs';
-import { join } from 'path';
-
 /**
- * 漏斗阶段：域匹配（账号领域/栏目匹配）。
- * 域库外置在 data/ 下（示例 domains.example.json）；命中数 ≥ minHits 才保留，
- * 命中会写上 item.domains / item.domainHits，供后续加权排序使用。
+ * 漏斗阶段：域匹配（账号领域 / 栏目匹配）。
+ * 域库外置在 data/ 下；指定的真实域库缺失时回退到同名 *.example.json 并标记 degraded。
+ * 命中数 ≥ minHits 才保留，命中会写上 item.domains / item.domainHits 供后续打分使用。
  */
 export const domainMatch = {
   id: 'domainMatch',
   run(items, ctx) {
     const cfg = ctx.config || {};
-    let domains;
-    try {
-      domains = JSON.parse(readFileSync(join(ctx.dataDir, cfg.domains || 'domains.example.json'), 'utf-8')).domains || {};
-    } catch {
-      return { kept: items, dropped: [] };
+    const name = cfg.domains || 'domains.json';
+    const loaded = ctx.loadData(name);
+    if (!loaded) {
+      return { kept: items, dropped: [], degraded: true, reason: `域库缺失（${name}），已跳过域匹配` };
     }
 
+    const domains = loaded.data.domains || {};
     const activeIds = cfg.activeDomains || Object.keys(domains);
     const active = activeIds
       .map((id) => ({ id, ...domains[id] }))
       .filter((d) => Array.isArray(d.keywords) && d.keywords.length);
-    if (!active.length) return { kept: items, dropped: [] };
+    if (!active.length) {
+      return { kept: items, dropped: [], degraded: loaded.degraded, reason: '域库无生效领域' };
+    }
 
     const minHits = cfg.minHits || 1;
     const kept = [];
@@ -37,7 +36,12 @@ export const domainMatch = {
       if (hits >= minHits) kept.push({ ...it, domains: matched, domainHits: hits });
       else dropped.push({ item: it, reason: 'domain:no_match' });
     }
-    return { kept, dropped };
+    return {
+      kept,
+      dropped,
+      degraded: loaded.degraded,
+      reason: loaded.degraded ? `真实域库缺失，已回退示例域库 ${loaded.file}` : undefined,
+    };
   },
 };
 

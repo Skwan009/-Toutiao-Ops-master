@@ -1,5 +1,4 @@
 node_modules/
-package-lock.json
 *.log
 .DS_Store
 .env
@@ -19,3 +18,7 @@ cli/data/*.json
 
 # 编辑器个人配置
 .vscode/
+
+# 审查副本（含未脱敏快照），不入库
+审查/
+审查.zip

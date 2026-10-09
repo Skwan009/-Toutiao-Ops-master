@@ -17,7 +17,8 @@ metadata:
 
 ## 首次使用
 
-- 安装：`npm i -g toutiao-ops`；或本地运行 `node <仓库目录>/cli/index.js <命令>`（下文 `toutiao-ops xxx` 均按此替换）
+- 安装：`npm i -g @openclaw-cn/toutiao-ops`（下文 `toutiao-ops xxx` 均按此命令执行）
+- 在源码仓库内开发时，也可直接运行 `node cli/index.js <命令>`
 - 首次需安装 Chromium：`npx playwright install chromium`
 - 登录：`toutiao-ops auth login`（首次需手动扫码，二维码截图在 `~/.toutiao-ops/accounts/<name>/`）
 
@@ -63,6 +64,7 @@ toutiao-ops auth list
 - 创作灵感（创作活动 + 热点推荐） -> `references/inspiration.md`
 - 消息中心与选题信号 -> `references/message-center.md`
 - 发布后核验 -> `references/verify.md`
+- 选题推荐（加权排序 + 三件套输出） -> `references/topic-recommend.md`
 
 ## 命令速查
 
@@ -75,7 +77,7 @@ toutiao-ops auth list
 | `toutiao-ops publish article --title "..." --content "..."` | 发布文章（默认 Markdown 富文本排版，支持 --format / --content-file / --cover-mode 等） |
 | `toutiao-ops publish video --title "..." --file "path"` | 发布视频（支持 --topic / --cover / --gen-article / --visibility 等） |
 | `toutiao-ops publish weitoutiao --content "..."` | 发布微头条（支持 --images / --topic / --first-publish / --declaration 等） |
-| `toutiao-ops content list` | 查看作品列表（支持 --type / --status） |
+| `toutiao-ops content list` | 查看作品列表（已发布 + 全部类型，支持 --limit） |
 | `toutiao-ops comment list` | 查看评论列表（支持 --with-replies 获取子评论） |
 | `toutiao-ops comment reply --comment-id "..." --content "..."` | 回复评论（支持 ID / 内容片段 / 序号定位） |
 | `toutiao-ops comment like --comment-id "..."` | 点赞评论（支持 ID / 内容片段 / 序号定位） |
@@ -87,6 +89,7 @@ toutiao-ops auth list
 | `toutiao-ops message-center` | 消息中心推送（支持 --type / --box-type / --all / --raw） |
 | `toutiao-ops topic-signals` | 选题信号（一级：消息中心/作品数据；二级：外部热点；支持 --source / --filter） |
 | `toutiao-ops verify` | 发布后核验（草稿箱自检 / 条数+1 / 读取 vl / 重复检测） |
+| `toutiao-ops topic-recommend` | 选题推荐（信号加权排序，输出 JSON + Markdown + 落盘） |
 
 ## 通用选项
 

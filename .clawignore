@@ -1,3 +1,5 @@
+# 技能包只含 SKILL.md + references/：CLI 走 npm 包分发（@openclaw-cn/toutiao-ops，见 SKILL.md 安装段），
+# 因此这里排除 cli/。若将来要让技能包自带 CLI，需改为排除其子路径并确保不含 cli/data/*.json 真实数据。
 node_modules/
 cli/
 examples/

@@ -15,7 +15,7 @@
 | **文章发布** | 标题/正文、封面（单图/三图/无）、首发、合集、作品声明 |
 | **视频发布** | 视频上传、自定义/自动封面、话题、生成图文、可见性、合集 |
 | **微头条发布** | 文本 + 多图、话题、首发、作品声明 |
-| **作品管理** | 作品列表、按类型/状态筛选 |
+| **作品管理** | 作品列表 |
 | **评论管理** | 评论列表（含子评论）、回复评论、点赞评论 |
 | **数据分析** | 作品数据、粉丝画像（性别/年龄/地域/机型）、收益数据、单个作品详情 |
 | **创作灵感** | 创作活动、热点推荐 |
@@ -112,7 +112,7 @@ toutiao-ops publish weitoutiao \
 ### 作品与评论管理
 
 ```bash
-toutiao-ops content list --type article         # 作品列表
+toutiao-ops content list --limit 20             # 作品列表（已发布）
 toutiao-ops comment list --with-replies          # 评论列表（含子评论）
 toutiao-ops comment reply --comment-id "内容片段" --content "回复"
 toutiao-ops comment like --comment-id "1"        # 点赞第一条评论
@@ -125,7 +125,7 @@ toutiao-ops analytics works --type video         # 视频数据
 toutiao-ops analytics fans                       # 粉丝画像
 toutiao-ops analytics income --type article      # 图文收益
 toutiao-ops analytics content-detail \
-  --content-id "7623453165358170664" \
+  --content-id "1234567890123456789" \
   --content-type 2                               # 单个作品详情
 ```
 
@@ -205,7 +205,7 @@ toutiao-ops inspiration --type hotspot           # 热点推荐
 
 ## 环境要求
 
-- Node.js >= 18
+- Node.js >= 20（依赖 `marked@17` 的最低要求）
 - macOS / Linux / Windows
 - 首次运行需要有显示器环境（扫码登录），后续可使用 `--headless`
 

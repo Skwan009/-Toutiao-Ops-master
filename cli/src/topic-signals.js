@@ -2,6 +2,8 @@ import { signal as messageSignal } from './message-center.js';
 import { signal as worksSignal } from './signals/works-analytics.js';
 import { signal as externalSignal } from './signals/external-hot.js';
 import { runPipeline } from './pipeline.js';
+import { launchBrowser, closeBrowser } from './browser.js';
+import { ensureLoggedIn } from './auth-guard.js';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -10,6 +12,8 @@ import { fileURLToPath } from 'url';
  * 选题信号统一入口：按 signals.json 逐源拉取，按 weights.json 打上 tier/weight。
  * 一级权重（站内）：message-center / works-analytics；二级权重（站外）：external-hot。
  * 单个源失败不影响其它源；外部源失败即降级（不阻断）。
+ *
+ * 站内源共用一个浏览器上下文（同一个 page），避免一次调用启动多个浏览器。
  */
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SIGNALS_PATH = join(HERE, '..', 'config', 'signals.json');
@@ -38,22 +42,55 @@ export async function listTopicSignals(opts = {}) {
 
   const items = [];
   const sources = [];
-  for (const s of selected) {
-    const tier = s.tier ?? 1;
-    const weight = weights.tiers?.[String(tier)]?.weight ?? null;
-    const impl = REGISTRY[s.id];
-    if (!impl) {
-      sources.push({ id: s.id, kind: s.kind, tier, weight, error: '未登记实现（REGISTRY）' });
-      continue;
-    }
+
+  // 站内源共用一个浏览器会话；站外源是纯 Node fetch，不需要浏览器
+  const needsBrowser = selected.some((s) => REGISTRY[s.id] && s.kind !== 'external');
+  let browser = null;
+  let browserError = null;
+  if (needsBrowser) {
     try {
-      const got = await impl.collect({ opts });
-      const tagged = got.map((it) => ({ ...it, tier, weight }));
-      items.push(...tagged);
-      sources.push({ id: s.id, kind: s.kind, tier, weight, count: tagged.length });
+      browser = await launchBrowser(opts);
+      await ensureLoggedIn(browser.page);
     } catch (e) {
-      sources.push({ id: s.id, kind: s.kind, tier, weight, error: e.message });
+      browserError = e;
+      if (browser) {
+        await closeBrowser(browser.context).catch(() => {});
+        browser = null;
+      }
     }
+  }
+
+  try {
+    for (const s of selected) {
+      const tier = s.tier ?? 1;
+      const weight = weights.tiers?.[String(tier)]?.weight ?? null;
+      const impl = REGISTRY[s.id];
+      if (!impl) {
+        sources.push({ id: s.id, kind: s.kind, tier, weight, error: '未登记实现（REGISTRY）' });
+        continue;
+      }
+      if (s.kind !== 'external' && !browser) {
+        sources.push({
+          id: s.id, kind: s.kind, tier, weight,
+          error: `浏览器会话不可用：${browserError ? browserError.message : '未知原因'}`,
+        });
+        continue;
+      }
+      try {
+        const got = await impl.collect({ opts, page: browser ? browser.page : undefined });
+        // 条目自带 tier（如消息按类型分档）时优先保留，不被信号源整体层级覆盖
+        const tagged = got.map((it) => {
+          const effTier = it.tier == null ? tier : it.tier;
+          return { ...it, tier: effTier, weight: weights.tiers?.[String(effTier)]?.weight ?? null };
+        });
+        items.push(...tagged);
+        sources.push({ id: s.id, kind: s.kind, tier, weight, count: tagged.length });
+      } catch (e) {
+        sources.push({ id: s.id, kind: s.kind, tier, weight, error: e.message });
+      }
+    }
+  } finally {
+    if (browser) await closeBrowser(browser.context).catch(() => {});
   }
 
   const base = {
@@ -68,8 +105,8 @@ export async function listTopicSignals(opts = {}) {
 
   // --filter：套用三级漏斗（compliance → domainMatch → dedupe）
   if (opts.filter) {
-    const { stages, counts, items: filtered } = await runPipeline(items, {});
-    base.pipeline = { stages, counts };
+    const { stages, counts, items: filtered, degraded } = await runPipeline(items, {});
+    base.pipeline = { stages, counts, degraded };
     base.counts = { total: filtered.length, beforeFilter: items.length };
     base.items = filtered;
   }

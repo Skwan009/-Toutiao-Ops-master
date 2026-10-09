@@ -20,10 +20,30 @@ const REGISTRY = { compliance, domainMatch, dedupe };
 /** 统一取文本：兼容 message(title/text) / work(title/abstract) / hot(title) */
 const itemText = (it) => [it.title, it.text, it.abstract].filter(Boolean).join(' ');
 
+/**
+ * 读取 data/ 下的数据文件；指定文件缺失时回退到同名 *.example.json。
+ * 返回 { data, file, degraded } 或 null（都不存在）。
+ */
+function loadData(dir, name) {
+  const candidates = [name, name.replace(/\.json$/i, '.example.json')];
+  for (const f of candidates) {
+    try {
+      return { data: JSON.parse(readFileSync(join(dir, f), 'utf-8')), file: f, degraded: f !== name };
+    } catch { /* 尝试下一个 */ }
+  }
+  return null;
+}
+
 export async function runPipeline(items, opts = {}) {
   const cfgPath = opts.pipelinePath || join(CONFIG_DIR, 'pipeline.json');
   const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
-  const ctx = { itemText, dataDir: DATA_DIR, configDir: CONFIG_DIR, opts };
+  const ctx = {
+    itemText,
+    dataDir: DATA_DIR,
+    configDir: CONFIG_DIR,
+    opts,
+    loadData: (name) => loadData(DATA_DIR, name),
+  };
 
   let current = items;
   const stages = [];
@@ -32,15 +52,24 @@ export async function runPipeline(items, opts = {}) {
     const impl = REGISTRY[s.id];
     if (!impl) { stages.push({ id: s.id, error: '未登记实现（REGISTRY）' }); continue; }
 
-    const { kept, dropped } = await impl.run(current, { ...ctx, config: s });
+    const res = await impl.run(current, { ...ctx, config: s });
+    const { kept, dropped } = res;
     const reasons = {};
     for (const d of dropped) reasons[d.reason] = (reasons[d.reason] || 0) + 1;
-    stages.push({ id: s.id, in: current.length, kept: kept.length, dropped: dropped.length, reasons });
+    stages.push({
+      id: s.id,
+      in: current.length,
+      kept: kept.length,
+      dropped: dropped.length,
+      reasons,
+      ...(res.degraded ? { degraded: true, note: res.reason } : {}),
+    });
     current = kept;
   }
 
   return {
     schemaVersion: SCHEMA_VERSION,
+    degraded: stages.some((s) => s.degraded),
     stages,
     counts: { in: items.length, out: current.length },
     items: current,

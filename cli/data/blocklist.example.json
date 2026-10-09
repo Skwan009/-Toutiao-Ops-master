@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "note": "示例词表（仅演示结构，占位用）。复制为 blocklist.json 并填入真实词表；真实文件不入库。词表缺失时漏斗一律放行。",
+  "note": "示例词表（仅演示结构，词条为占位符）。复制为 blocklist.json 并填入真实词表；真实文件不入库。注意：回退到本文件时漏斗会标记 degraded，topic-recommend 默认拒绝输出推荐（需 --allow-degraded 显式确认）。",
   "categories": {
     "illegal": { "label": "违法违规", "words": ["示例词1", "示例词2"] },
     "absolute": { "label": "绝对化用语", "words": ["示例词3"] },
