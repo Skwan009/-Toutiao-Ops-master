@@ -6,7 +6,7 @@
 
 头条号创作者后台的自动化运营 CLI：发布、内容管理、评论互动、数据分析、创作灵感，另含消息中心、选题信号与发布核验。
 
-- 本仓库（二次开发产物）：github.com/Skwan009/Toutiao-Ops-master-
+- 本仓库（二次开发产物）：github.com/Skwan009/头条号运营大师
   - npm 包名 `@openclaw-cn/toutiao-ops`；GitHub Packages 的 scope 由仓库 owner 动态推导（见 `.github/workflows/publish.yml`），与 npm scope 不必一致
 - 来源：基于 github.com/mf-yang/toutiao-ops（MIT）的二次开发
   - 上游快照 commit `de89bba`（chore: 更新版本至 1.1.4），2026-04-08

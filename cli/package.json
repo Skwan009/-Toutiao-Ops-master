@@ -17,11 +17,11 @@
   "author": "OpenClaw-CN",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Skwan009/Toutiao-Ops-master-"
+    "url": "https://github.com/Skwan009/头条号运营大师"
   },
-  "homepage": "https://github.com/Skwan009/Toutiao-Ops-master-",
+  "homepage": "https://github.com/Skwan009/头条号运营大师",
   "bugs": {
-    "url": "https://github.com/Skwan009/Toutiao-Ops-master-/issues"
+    "url": "https://github.com/Skwan009/头条号运营大师/issues"
   },
   "publishConfig": {
     "access": "public"
