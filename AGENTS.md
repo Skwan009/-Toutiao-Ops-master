@@ -1,6 +1,6 @@
 # AGENTS.md
 
-项目上下文速览。工程约定与可复用接口以本文件为准；需求与决策的由来见 HANDOFF.md。
+项目上下文速览。工程约定与可复用接口以本文件为准；需求与决策的由来见 `docs/HANDOFF.md`。
 
 ## 1. 项目是什么
 
@@ -20,13 +20,10 @@
 
 ```
 .
-├── SKILL.md              # Agent 技能入口（元数据 + 命令速查）
-├── README.md             # 项目说明
-├── AGENTS.md             # 工程约定与接口（本文件）
-├── CLAUDE.md             # 指向 AGENTS.md
-├── HANDOFF.md            # 需求与决策的由来
-├── cli/
-│   ├── index.js          # 命令总入口（commander 注册）
+├── SKILL.md              # Agent 技能入口（元数据 + 命令速查）；技能规范要求放根目录
+├── references/           # 各命令参数文档；被 SKILL.md 相对引用，勿随意移动
+├── cli/                  # npm 包 @openclaw-cn/toutiao-ops
+│   ├── index.js          # 命令总入口（commander 注册，不含业务）
 │   ├── package.json
 │   ├── src/              # 功能模块
 │   ├── src/signals/      # 统一信号源（base / works-analytics / external-hot）
@@ -35,9 +32,16 @@
 │   ├── test/             # 离线冒烟测试（npm test；CI 与发布前门禁）
 │   ├── tools/            # 一次性探测脚本，非产品代码
 │   └── node_modules/
-├── references/           # 各命令参数文档
+├── docs/                 # 面向人的项目文档
+│   └── HANDOFF.md        # 需求与决策的由来
 ├── examples/             # 发布输入 JSON 样例
-└── .github/workflows/publish.yml
+├── .github/workflows/    # ci.yml（离线冒烟测试）+ publish.yml（npm / GitHub Packages）
+├── AGENTS.md             # 工程约定与接口（本文件）
+├── CLAUDE.md             # 指向 AGENTS.md
+├── README.md             # 项目说明
+├── Makefile              # 常用任务（Linux / macOS；Windows 用 cli/ 下的 npm 命令）
+├── CHANGELOG.md / CONTRIBUTING.md / SECURITY.md / LICENSE
+└── .editorconfig / .gitattributes / .gitignore / .clawignore
 ```
 
 ## 3. 可复用接口（改动前必读）

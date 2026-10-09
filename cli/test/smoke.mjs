@@ -19,6 +19,7 @@ import { execFileSync } from 'child_process';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI_DIR = join(HERE, '..');
+const ROOT_DIR = join(CLI_DIR, '..');
 const SRC_DIR = join(CLI_DIR, 'src');
 const CONFIG_DIR = join(CLI_DIR, 'config');
 const DATA_DIR = join(CLI_DIR, 'data');
@@ -275,6 +276,16 @@ async function main() {
       if (/'output'|"output"/.test(readFileSync(f, 'utf8'))) offenders.push(relative(CLI_DIR, f));
     }
     assert(offenders.length === 0, `仍在引用包内 output/：${offenders.join(', ')}`);
+  });
+
+  await check('仓库根目录必备文件齐全', () => {
+    const required = [
+      'README.md', 'LICENSE', 'CHANGELOG.md', 'CONTRIBUTING.md', 'SECURITY.md',
+      'Makefile', '.editorconfig', '.gitattributes', '.gitignore', '.clawignore',
+      'SKILL.md', 'AGENTS.md', 'CLAUDE.md',
+    ];
+    const missing = required.filter((f) => !existsSync(join(ROOT_DIR, f)));
+    assert(missing.length === 0, `缺少：${missing.join(', ')}`);
   });
 
   await check('cli/ 根目录只放 index.js（临时脚本归入 tools/）', () => {
