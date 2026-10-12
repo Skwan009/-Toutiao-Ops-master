@@ -10,11 +10,12 @@ const CONFIG_PATH = join(HERE, '..', 'config', 'message-types.json');
 const WEIGHTS_PATH = join(HERE, '..', 'config', 'weights.json');
 const SCHEMA_VERSION = '1.0.0';
 
-// 消息中心接口（POST + JSON，仅依赖登录态 Cookie）
+// 消息中心接口（POST + JSON，仅依赖登录态 Cookie）。app_id 来自 config/message-types.json
 const API = {
-  boxes: 'https://mp.toutiao.com/bcs/notice/boxes/?app_id=1231',
-  cells: 'https://mp.toutiao.com/bcs/notice/cell/list/?app_id=1231',
+  boxes: (appId) => `https://mp.toutiao.com/bcs/notice/boxes/?app_id=${appId}`,
+  cells: (appId) => `https://mp.toutiao.com/bcs/notice/cell/list/?app_id=${appId}`,
 };
+const appIdOf = (config) => config?.appId ?? 1231;
 
 function loadConfig() {
   const types = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
@@ -57,8 +58,8 @@ async function postJson(page, url, body, retries = 1) {
 }
 
 /** 拉取分类目录（boxes + pin） */
-async function fetchBoxes(page) {
-  const res = await postJson(page, API.boxes, {});
+async function fetchBoxes(page, appId) {
+  const res = await postJson(page, API.boxes(appId), {});
   if (!res || !res.ok || !res.data) {
     throw new Error(`获取消息分类失败（status=${res && res.status}）`);
   }
@@ -71,11 +72,11 @@ async function fetchBoxes(page) {
 }
 
 /** 拉取某分类的明细，自动翻页直到 has_more=false 或达 maxPages */
-async function fetchCells(page, boxType, { limit = 10, maxPages = 5 } = {}) {
+async function fetchCells(page, boxType, { limit = 10, maxPages = 5, appId } = {}) {
   const items = [];
   let cursor = '';
   for (let p = 0; p < maxPages; p++) {
-    const res = await postJson(page, API.cells, { box_type: boxType, cursor, limit });
+    const res = await postJson(page, API.cells(appId), { box_type: boxType, cursor, limit });
     if (!res || !res.ok || !res.data) break;
     const d = res.data;
     if (Array.isArray(d.cells)) items.push(...d.cells);
@@ -145,6 +146,9 @@ function normalizeCell(cell, type, config, includeRaw = false) {
     createTime: epoch ? new Date(epoch * 1000).toISOString() : '',
     createEpoch: epoch,
     messageType: logPb.message_type || '',
+    // 采集到的 log_pb.message_type 经 config/message-types.json 的 messageTypeMap 归一化，
+    // 供"box_type 分类"之外的第二口径使用（只作标注，不改变 tier/weight 判定）
+    typeFromMessage: config.messageTypeMap?.[logPb.message_type] || '',
     messageId: logPb.message_id || cell.cell_id || '',
     cellId: cell.cell_id || '',
     mergeCount: cell.merge_count ?? null,
@@ -191,7 +195,7 @@ async function collectWithPage(page, config, opts) {
   const maxPages = toInt(opts.maxPages, 5);
   const targets = resolveTargets(config, opts);
 
-  const boxResp = await fetchBoxes(page);
+  const boxResp = await fetchBoxes(page, appIdOf(config));
   const boxByType = new Map();
   [...boxResp.boxes, ...boxResp.pin].forEach((b) => boxByType.set(b.box_type, b));
 
@@ -199,7 +203,7 @@ async function collectWithPage(page, config, opts) {
   const byType = {};
   const includeRaw = Boolean(opts.raw);
   for (const t of targets) {
-    const cells = await fetchCells(page, t.boxType, { limit, maxPages });
+    const cells = await fetchCells(page, t.boxType, { limit, maxPages, appId: appIdOf(config) });
     const norm = cells.map((c) => normalizeCell(c, t, config, includeRaw));
     byType[t.id] = norm.length;
     messages.push(...norm);

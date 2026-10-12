@@ -20,6 +20,8 @@ const FORUMS = [
 
 const { context, page } = await launchBrowser({ headless: true });
 
+// 失败必须反映到退出码：否则脚本调用方无法区分"抓到了"和"未登录/选择器变了"
+let failed = 0;
 for (const f of FORUMS) {
   try {
     await page.goto(f.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
@@ -29,8 +31,13 @@ for (const f of FORUMS) {
     writeFileSync(`${OUT_DIR}/forum-${f.name}.txt`, text, 'utf8');
     console.log(`saved: ${f.name}, length=${text.length}`);
   } catch (e) {
+    failed++;
     console.log(`failed: ${f.name}: ${e.message}`);
   }
 }
 
 await closeBrowser(context);
+if (failed > 0) {
+  console.error(`共 ${failed}/${FORUMS.length} 个话题抓取失败`);
+  process.exitCode = 1;
+}

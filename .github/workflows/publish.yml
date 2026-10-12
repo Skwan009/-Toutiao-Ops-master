@@ -8,6 +8,8 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # 人工审批门禁：没有 environment 保护时，任何能推 tag 的人都能把任意 commit 发上 npm
+    environment: npm-publish
     permissions:
       contents: write
       id-token: write
@@ -16,6 +18,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 需要完整历史才能判断 tag 是否位于默认分支的祖先链上
+          fetch-depth: 0
+
+      # 阻止"对任意分支/历史 commit 打 v* 标签即发布"这一误发向量：
+      # 标签指向的 commit 必须是默认分支的祖先（即已经过主干验证）。
+      - name: Verify tag is on default branch
+        run: |
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          git fetch --no-tags origin "$DEFAULT_BRANCH"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH"; then
+            echo "::error::标签 $GITHUB_REF 指向的 commit 不在默认分支 $DEFAULT_BRANCH 的历史中，拒绝发布"
+            exit 1
+          fi
+          echo "OK: $GITHUB_SHA 是 origin/$DEFAULT_BRANCH 的祖先"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

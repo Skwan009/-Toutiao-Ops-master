@@ -19,7 +19,7 @@
     }
   },
   "ranking": {
-    "note": "topic-recommend 打分：base = Σ(分量归一值 × 权重)，score = base × 层级权重（tierMode=multiplier）。层级作乘数是为了保证「站外权重低于站内」这条硬约束。",
+    "note": "topic-recommend 打分：base = Σ(分量归一值 × 权重)，score = base × 层级权重（tierMode=multiplier）。层级作乘数是为了保证「站外权重低于站内」这条硬约束。所有打分参数均在此处，代码内不硬编码。",
     "components": {
       "domain": 0.45,
       "heat": 0.30,
@@ -27,6 +27,9 @@
     },
     "tierMode": "multiplier",
     "freshHalfLifeHours": 72,
+    "domainHitSaturation": 3,
+    "tierComponentWeight": 0.2,
+    "unknownFreshness": 0.8,
     "topN": 20
   }
 }

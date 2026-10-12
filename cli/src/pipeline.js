@@ -37,12 +37,14 @@ function loadData(dir, name) {
 export async function runPipeline(items, opts = {}) {
   const cfgPath = opts.pipelinePath || join(CONFIG_DIR, 'pipeline.json');
   const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
+  // dataDir 可注入（测试/夹具）；默认仍是包内 data/
+  const dataDir = opts.dataDir || DATA_DIR;
   const ctx = {
     itemText,
-    dataDir: DATA_DIR,
+    dataDir,
     configDir: CONFIG_DIR,
     opts,
-    loadData: (name) => loadData(DATA_DIR, name),
+    loadData: (name) => loadData(dataDir, name),
   };
 
   let current = items;

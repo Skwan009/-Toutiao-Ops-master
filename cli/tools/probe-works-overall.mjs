@@ -7,6 +7,7 @@
  */
 import { launchBrowser, closeBrowser, sleep, waitForStable, dismissOverlays } from '../src/browser.js';
 import { ensureLoggedIn } from '../src/auth-guard.js';
+import { drainResponses } from '../src/verify.js';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -62,6 +63,8 @@ async function main() {
   };
   const apiSeen = new Set();
   const reqSeen = new Set();
+  // response 回调是异步的：计数在途数量，close 前必须归零，否则报告／落盘会缺接口
+  const inflight = { n: 0 };
   const { context, page } = await launchBrowser(opts);
 
   const attach = (p) => {
@@ -81,22 +84,25 @@ async function main() {
       const it = interest(url, postData);
       if (it >= 50) rep.requests.push({ method: req.method(), url, postData, interest: it });
     });
-    p.on('response', async (r) => {
-      try {
-        const url = r.url();
-        if (!url.startsWith('http')) return;
-        if (!(r.headers()['content-type'] || '').includes('json')) return;
-        const k = key(r.request());
-        if (apiSeen.has(k)) return;
-        apiSeen.add(k);
-        const j = await r.json().catch(() => null);
-        if (j === null) return;
-        let path = url;
-        try { path = new URL(url).pathname; } catch {}
-        const it = interest(url, r.request().postData());
-        rep.apiHits.push({ url, path, status: r.status(), interest: it, summary: summarize(j) });
-        if (it >= 70) rep.payloads.push({ url, path, status: r.status(), interest: it, data: j });
-      } catch {}
+    p.on('response', (r) => {
+      const url = r.url();
+      if (!url.startsWith('http')) return;
+      if (!(r.headers()['content-type'] || '').includes('json')) return;
+      inflight.n++;
+      (async () => {
+        try {
+          const k = key(r.request());
+          if (apiSeen.has(k)) return;
+          apiSeen.add(k);
+          const j = await r.json().catch(() => null);
+          if (j === null) return;
+          let path = url;
+          try { path = new URL(url).pathname; } catch {}
+          const it = interest(url, r.request().postData());
+          rep.apiHits.push({ url, path, status: r.status(), interest: it, summary: summarize(j) });
+          if (it >= 70) rep.payloads.push({ url, path, status: r.status(), interest: it, data: j });
+        } catch {} finally { inflight.n--; }
+      })();
     });
   };
   context.on('page', attach);
@@ -141,6 +147,8 @@ async function main() {
   } catch (e) {
     rep.errors.push(e.message);
   } finally {
+    // 等在途响应落定再关、再落盘，否则最后一批接口会丢
+    if (!(await drainResponses(inflight))) rep.errors.push('部分响应未在超时内返回，报告可能不完整');
     await closeBrowser(context);
   }
 

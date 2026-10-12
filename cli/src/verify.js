@@ -61,8 +61,9 @@ function cellKey(ic) {
 /**
  * 等待在途的 response 监听回调全部结束。
  * `page.on('response')` 的回调是异步的，直接 closeBrowser 会丢掉最后一批数据。
+ * 导出供 tools/ 下的探测脚本复用（它们过去直接在 close 前落盘，报告会缺接口）。
  */
-async function drainResponses(inflight, timeoutMs = 8000) {
+export async function drainResponses(inflight, timeoutMs = 8000) {
   const t0 = Date.now();
   while (Date.now() - t0 < timeoutMs) {
     if (inflight.n === 0) {
@@ -258,6 +259,7 @@ export async function verifyPublish(opts = {}) {
         type: 0,
         pageSize: cfg.pageSize ?? 50,
         appId: cfg.appId ?? 1231,
+        baseUrl: cfg.countApi || undefined,
       });
       if (d.total_count != null) currentCount = d.total_count;
       for (const item of d.contents || []) {

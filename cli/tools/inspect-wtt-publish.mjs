@@ -39,6 +39,7 @@ try {
   console.log('screenshot saved');
 } catch (e) {
   console.log('failed:', e.message);
+  process.exitCode = 1; // 失败必须反映到退出码，调用方才能区分成功
 } finally {
   await closeBrowser(context);
 }

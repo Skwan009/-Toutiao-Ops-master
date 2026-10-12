@@ -13,11 +13,13 @@ import { browserFetch, sleep } from './browser.js';
 
 const DEFAULT_APP_ID = 1231;
 const DEFAULT_STATUS = 2; // 2=已发布
+/** 作品总数/明细接口（可用 config/verify.json 的 countApi 覆盖） */
+export const DEFAULT_COUNT_API = 'https://mp.toutiao.com/mp/agw/creator_center/list/v2';
 /** 实测安全的每页条数。小 page_size（如 5）会被站点安全 SDK 拦截，统一用大值再本地截断 */
 export const SAFE_PAGE_SIZE = 50;
 
 /** 构造作品列表接口 URL */
-export function buildWorksUrl({ status = DEFAULT_STATUS, type = 0, pageSize = 50, appId = DEFAULT_APP_ID } = {}) {
+export function buildWorksUrl({ status = DEFAULT_STATUS, type = 0, pageSize = 50, appId = DEFAULT_APP_ID, baseUrl = DEFAULT_COUNT_API } = {}) {
   const q = new URLSearchParams({
     status: String(status),
     type: String(type),
@@ -26,7 +28,7 @@ export function buildWorksUrl({ status = DEFAULT_STATUS, type = 0, pageSize = 50
     wenda_type: '1',
     app_id: String(appId),
   });
-  return `https://mp.toutiao.com/mp/agw/creator_center/list/v2?${q.toString()}`;
+  return `${baseUrl}?${q.toString()}`;
 }
 
 /**

@@ -1,0 +1,54 @@
+name: Browser install (user path)
+
+# 本作业只做一件事：验证「用户真实安装路径」。
+# 其余作业（ci.yml / publish.yml）一律用 --ignore-scripts 跳过 postinstall，
+# 因此 package.json 里 postinstall 能否真的把 Chromium 装上，此前没有任何流水线覆盖。
+#
+# 不缓存：只有真正跑一次下载，才能证明 postinstall 有效（带缓存会掩盖失败）。
+# 为控制成本，仅在依赖 / 浏览器相关文件变动时触发。
+on:
+  push:
+    paths:
+      - 'cli/package.json'
+      - 'cli/package-lock.json'
+      - 'cli/src/browser.js'
+      - '.github/workflows/browser-install.yml'
+  pull_request:
+    paths:
+      - 'cli/package.json'
+      - 'cli/package-lock.json'
+      - 'cli/src/browser.js'
+      - '.github/workflows/browser-install.yml'
+
+jobs:
+  browser-install:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 不加 --ignore-scripts：这就是用户 `npm i -g` 时实际走的生命周期
+      - name: Install with lifecycle scripts
+        working-directory: cli
+        run: npm ci
+
+      # 断言 postinstall 真的落盘了浏览器可执行文件（只检查存在性，不启动，
+      # 避免把 runner 缺系统库这类环境问题误判成 postinstall 缺陷）
+      - name: Verify Chromium was downloaded by postinstall
+        working-directory: cli
+        run: |
+          node -e "
+            const fs = require('fs');
+            const { chromium } = require('playwright');
+            const exe = chromium.executablePath();
+            if (!fs.existsSync(exe)) {
+              console.error('postinstall 未安装 Chromium，期望路径: ' + exe);
+              process.exit(1);
+            }
+            console.log('chromium ok: ' + exe);
+          "

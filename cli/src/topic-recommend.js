@@ -37,16 +37,16 @@ function heatRaw(it) {
 
 const epochOf = (it) => it.createEpoch || it.publishTime || it.epoch || 0;
 
-function scoreItems(items, { components, halfLifeHours, tiers, tierMode }) {
+function scoreItems(items, { components, halfLifeHours, tiers, tierMode, domainHitSaturation, tierComponentWeight, unknownFreshness }) {
   const maxHeat = Math.max(1, ...items.map(heatRaw));
   const now = Date.now() / 1000;
 
   return items
     .map((it) => {
-      const domain = Math.min((it.domainHits || 0) / 3, 1);
+      const domain = Math.min((it.domainHits || 0) / domainHitSaturation, 1);
       const heat = heatRaw(it) / maxHeat;
       const e = epochOf(it);
-      const fresh = e ? Math.exp(-((now - e) / 3600) / halfLifeHours) : 0.8;
+      const fresh = e ? Math.exp(-((now - e) / 3600) / halfLifeHours) : unknownFreshness;
       const tierWeight = tiers?.[String(it.tier)]?.weight ?? 0.5;
 
       // 域命中分量仅在漏斗写入过 domainHits 时可用；不可用时按剩余分量重新归一，
@@ -61,7 +61,7 @@ function scoreItems(items, { components, halfLifeHours, tiers, tierMode }) {
       const norm = wsum > 0 ? wsum : 1;
       const base = Object.values(parts).reduce((s, v) => s + v, 0) / norm;
       // 层级作乘数：保证站外（二级 0.5）整体低于站内（一级 1.0）
-      const score = tierMode === 'component' ? base + tierWeight * 0.2 : base * tierWeight;
+      const score = tierMode === 'component' ? base + tierWeight * tierComponentWeight : base * tierWeight;
 
       const normalized = Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, v / norm]));
       return {
@@ -153,6 +153,9 @@ export async function recommendTopics(opts = {}) {
     halfLifeHours: ranking.freshHalfLifeHours || 72,
     tiers: weights.tiers,
     tierMode: ranking.tierMode || 'multiplier',
+    domainHitSaturation: ranking.domainHitSaturation ?? 3,
+    tierComponentWeight: ranking.tierComponentWeight ?? 0.2,
+    unknownFreshness: ranking.unknownFreshness ?? 0.8,
   });
   const topics = scored.slice(0, topN);
 
