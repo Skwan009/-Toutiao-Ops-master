@@ -2,6 +2,12 @@ import { launchBrowser, closeBrowser } from './browser.js';
 import { ensureLoggedIn } from './auth-guard.js';
 import { fetchWorks, countersOf, SAFE_PAGE_SIZE } from './works-api.js';
 
+/** 时间戳 → ISO 字符串；非法值返回 ''（避免 Invalid Date 触发 toISOString 抛 RangeError） */
+function toIsoTime(ts) {
+  const n = Number(ts);
+  return Number.isFinite(n) && n > 0 ? new Date(n * 1000).toISOString() : '';
+}
+
 /** 接口条目 → 列表项 */
 function toListItem(item) {
   const a = item.article_attr || {};
@@ -15,7 +21,7 @@ function toListItem(item) {
     status: a.status ?? null,
     statusDesc: a.status_desc || '',
     visibilityLevel: a.visibility_level ?? null,
-    createTime: a.create_time ? new Date(a.create_time * 1000).toISOString() : '',
+    createTime: toIsoTime(a.create_time),
     stats: {
       impression: s.impression_count ?? counters['展现'] ?? 0,
       read: s.go_detail_count ?? counters['阅读'] ?? 0,

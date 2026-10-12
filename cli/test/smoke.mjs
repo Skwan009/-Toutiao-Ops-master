@@ -297,6 +297,69 @@ async function main() {
     assert(Object.keys(countersOf(null)).length === 0, 'countersOf(null) 应返回空对象');
   });
 
+  await check('works-api 非 JSON 响应必须抛错（不得当空数据成功）', async () => {
+    const { fetchWorks } = await mod('works-api.js');
+    // 模拟被 WAF/登录失效返回 HTML 的响应：旧实现 return data || {}，
+    // 调用方会静默得到 success:true + count:0
+    const badPage = { evaluate: async () => ({ ok: true, status: 200, data: '<html>blocked</html>' }) };
+    let err = null;
+    try { await fetchWorks(badPage, { pageSize: 50 }); } catch (e) { err = e; }
+    assert(err !== null, '非 JSON 响应应抛错，实际未抛');
+
+    // pageSize 必须按对象参数生效（旧实现传数字会被静默忽略）
+    const urls = [];
+    const okPage = {
+      evaluate: async (_fn, arg) => {
+        urls.push(arg.url);
+        return { ok: true, status: 200, data: JSON.stringify({ total_count: 7, contents: [] }) };
+      },
+    };
+    await fetchWorks(okPage, { pageSize: 123 });
+    const u = new URL(urls[0]);
+    assert(u.searchParams.get('page_size') === '123', `pageSize 未生效，实际 ${u.searchParams.get('page_size')}`);
+  });
+
+  await check('dismissOverlays 不注册 context 监听器（防监听器泄漏）', async () => {
+    const { dismissOverlays } = await mod('browser.js');
+    let onCalls = 0;
+    const fakePage = {
+      context: () => ({ on: () => { onCalls++; }, grantPermissions: async () => {} }),
+      evaluate: async () => 0,
+      keyboard: { press: async () => {} },
+    };
+    await dismissOverlays(fakePage);
+    assert(onCalls === 0, `dismissOverlays 注册了 ${onCalls} 个 context 监听器（应为 0）`);
+  });
+
+  await check('domainMatch 的 minHits: 0 被尊重（不被 || 吞成 1）', async () => {
+    const { runPipeline } = await mod('pipeline.js');
+    const dir = makeTempDataDir({
+      'domains.json': { domains: { life: { label: '生活', keywords: ['生活'] } } },
+      'blocklist.json': { categories: {} },
+    });
+    const cfg0 = join(dir, 'pipeline0.json');
+    writeFileSync(cfg0, JSON.stringify({
+      stages: [{ id: 'domainMatch', enabled: true, domains: 'domains.json', activeDomains: ['life'], minHits: 0 }],
+    }));
+    const r0 = await runPipeline([{ title: '完全无关的内容' }], { dataDir: dir, pipelinePath: cfg0 });
+    assert(r0.stages.find((s) => s.id === 'domainMatch').dropped === 0, 'minHits=0 时不应丢弃任何条目');
+
+    const cfg1 = join(dir, 'pipeline1.json');
+    writeFileSync(cfg1, JSON.stringify({
+      stages: [{ id: 'domainMatch', enabled: true, domains: 'domains.json', activeDomains: ['life'], minHits: 1 }],
+    }));
+    const r1 = await runPipeline([{ title: '完全无关的内容' }], { dataDir: dir, pipelinePath: cfg1 });
+    assert(r1.stages.find((s) => s.id === 'domainMatch').dropped === 1, 'minHits=1 时无关项应被丢弃');
+  });
+
+  await check('topic-recommend --top 非法值必须报错而非静默回退', () => {
+    for (const bad of ['0', 'abc', '-1']) {
+      const r = runCliExpectFail(['topic-recommend', '--top', bad, '--no-filter', '--account', 'smoke-offline']);
+      assert(r.code !== 0, `--top ${bad} 应返回非 0 退出码，实际 ${r.code}`);
+      assert(/--top 需要正整数/.test(r.out), `--top ${bad} 错误信息不符，实际：${r.out.slice(0, 160)}`);
+    }
+  });
+
   await check('vl 分支判定覆盖全部分支', async () => {
     const { classifyVL } = await mod('verify.js');
     const cases = [

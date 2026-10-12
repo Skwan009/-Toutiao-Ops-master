@@ -117,7 +117,18 @@ export async function recommendTopics(opts = {}) {
   const ranking = weights.ranking || {};
   // 缺省值与 config/weights.json 保持一致，避免配置丢失时打分口径漂移
   const components = ranking.components || { domain: 0.45, heat: 0.3, fresh: 0.25 };
-  const topN = Number(opts.top) || ranking.topN || 20;
+  // --top 显式传入但非法时不要静默回退到默认值（原 Number(opts.top) || ... 会吞掉
+  // NaN 与 0），否则调用方以为按自己的条数输出，实际拿到默认 20 条
+  let topN;
+  if (opts.top != null && String(opts.top).trim() !== '') {
+    const n = Number(opts.top);
+    if (!Number.isInteger(n) || n <= 0) {
+      throw new Error(`--top 需要正整数，当前：${opts.top}`);
+    }
+    topN = n;
+  } else {
+    topN = ranking.topN ?? 20;
+  }
   const account = opts.account || 'default';
   const generatedAt = new Date().toISOString();
   const useFilter = opts.filter !== false;

@@ -122,7 +122,7 @@ const content = program.command('content');
 content
   .command('list')
   .description('查看作品列表（已发布 + 全部类型）')
-  .option('--limit <n>', '返回条数（接口 page_size）', '20')
+  .option('--limit <n>', '返回条数（固定按 page_size=50 请求后本地截断）', '20')
   .option('--headless', '无头模式运行')
   .action(async (opts) => {
     await run(listContent, opts);

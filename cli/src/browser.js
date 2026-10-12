@@ -121,10 +121,11 @@ export async function waitForStable(page, timeout = 10000) {
  * 在任何需要点击页面元素之前调用。
  */
 export async function dismissOverlays(page) {
-  // 关闭浏览器级别权限弹窗（地理位置等）
-  page.context().on('page', () => {});
+  // 注意：不要在这里 page.context().on('page', ...) 注册监听器。
+  // 该方法一次运行会被调用多次（发布 3 次、verify 2 次等），每次都会追加一个
+  // 永不移除的空监听器，累积后触发 MaxListenersExceededWarning 并造成无谓开销。
+  // 位置权限已在 launchBrowser 里通过 permissions: [] 关闭，无需在此重复处理。
   try {
-    // 拒绝位置权限
     await page.context().grantPermissions([], { origin: 'https://mp.toutiao.com' });
   } catch {}
 

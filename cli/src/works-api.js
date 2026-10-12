@@ -46,14 +46,25 @@ export async function fetchWorks(page, opts = {}) {
       let data = res && res.data;
       // 该接口返回 text/plain 包裹的 JSON
       if (typeof data === 'string') {
-        try { data = JSON.parse(data); } catch { data = null; }
+        try {
+          data = JSON.parse(data);
+        } catch {
+          // 解析失败不能当"空数据成功"返回 {}：调用方会静默得到
+          // success:true + count:0，把 WAF/登录过期返回的 HTML 当成"没有作品"
+          const err = new Error('作品列表接口返回内容不是合法 JSON（可能被安全 SDK 拦截或登录态失效）');
+          err.raw = String(data).slice(0, 200);
+          throw err;
+        }
       }
       if (!res || !res.ok) {
         const err = new Error(`作品列表接口返回异常（status=${res && res.status}）`);
         err.res = res;
         throw err;
       }
-      return data || {};
+      if (data == null) {
+        throw new Error('作品列表接口返回空响应体');
+      }
+      return data;
     } catch (e) {
       lastErr = e;
       if (i === 0) await sleep(1500, 2500);
