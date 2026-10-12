@@ -272,13 +272,16 @@ async function run(fn, subOpts) {
     const result = await fn(opts);
     await updateCheck;
     console.log(JSON.stringify(result, null, 2));
-    // 业务失败（success:false 或核验 verdict:fail）也返回非零退出码，便于脚本/Agent 判定
+    // 业务失败（success:false 或核验 verdict:fail）也返回非零退出码，便于脚本/Agent 判定。
+    // ⚠️ 用 process.exitCode 而不是 process.exit()：stdout 为管道/文件时写入是异步的，
+    //    process.exit() 会立即终止进程，大输出（message-center --raw、topic-recommend 全量）
+    //    可能被截断，导致调用方拿到非法 JSON。设置 exitCode 后让事件循环自然退出即可。
     const failed = Boolean(result) && (result.success === false || result.verdict === 'fail');
-    process.exit(failed ? 1 : 0);
+    process.exitCode = failed ? 1 : 0;
   } catch (err) {
     await updateCheck.catch(() => {});
     console.error(JSON.stringify({ error: err.message, stack: err.stack }, null, 2));
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 

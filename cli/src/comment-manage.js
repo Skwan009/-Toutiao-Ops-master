@@ -357,8 +357,11 @@ async function extractCommentsFromDOM(page) {
       const articleTitle = articleEl?.textContent?.trim()?.substring(0, 60) || '';
       const articleUrl = articleEl?.href || '';
 
-      if (!content || seen.has(content)) continue;
-      seen.add(content);
+      // 去重键用 作者+正文+时间 复合键：原实现只按正文去重，
+      // 多条内容相同但作者/时间不同的评论（如都回复「赞」）会被漏报，count 偏小
+      const key = `${author}\u0000${content}\u0000${time}`;
+      if (!content || seen.has(key)) continue;
+      seen.add(key);
       results.push({ author, content, time, articleTitle, articleUrl });
     }
     return results;

@@ -397,6 +397,29 @@ async function main() {
     assert(!/t\.title\.replace\(\/\\\|/.test(src), '不应只转义 title 的 |');
   });
 
+  await check('runner 用 process.exitCode（避免截断管道 stdout）', () => {
+    const src = readFileSync(INDEX, 'utf8');
+    // 去掉注释行，避免注释里的 process.exit() 造成误报
+    const code = src.split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+    assert(!/process\.exit\s*\(/.test(code), '代码中不应再调用 process.exit()（会截断管道/文件 stdout）');
+    assert(/process\.exitCode\s*=/.test(src), '应通过 process.exitCode 设置退出码');
+  });
+
+  await check('browser.js 不再调用无效的 grantPermissions', () => {
+    const src = readFileSync(join(SRC_DIR, 'browser.js'), 'utf8');
+    assert(!/\.grantPermissions\s*\(/.test(src), 'grantPermissions 传 {origin} 对象会抛 TypeError（无效调用），应移除');
+    // 反证：这正是原调用被 catch 静默吞掉的原因
+    let threw = false;
+    try { new URL({ origin: 'https://mp.toutiao.com' }); } catch { threw = true; }
+    assert(threw, 'new URL({origin}) 应抛错（用于说明原调用无效）');
+  });
+
+  await check('评论去重使用 作者+正文+时间 复合键', () => {
+    const src = readFileSync(join(SRC_DIR, 'comment-manage.js'), 'utf8');
+    assert(!/seen\.has\(content\)/.test(src), '不应只按正文去重（内容相同的多条评论会被漏报）');
+    assert(/seen\.has\(key\)/.test(src), '应使用复合去重键');
+  });
+
   await check('vl 分支判定覆盖全部分支', async () => {
     const { classifyVL } = await mod('verify.js');
     const cases = [
