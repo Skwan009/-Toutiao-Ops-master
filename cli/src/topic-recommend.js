@@ -90,6 +90,9 @@ function scoreItems(items, { components, halfLifeHours, tiers, tierMode, domainH
 }
 
 function renderMarkdown(topics, meta) {
+  // 表格单元格统一转义：原实现只处理了 title 的 |，
+  // 来源 / 层级 / 领域里出现 | 同样会破表
+  const cell = (v) => String(v ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
   const lines = [];
   lines.push(`# 选题推荐 · ${meta.account}`);
   lines.push('');
@@ -106,7 +109,7 @@ function renderMarkdown(topics, meta) {
   lines.push('|---|------|------|------|------|------|');
   for (const t of topics) {
     const domains = (t.domains || []).join('/') || '-';
-    lines.push(`| ${t.rank} | ${t.score} | ${t.tierLabel || t.tier} | ${t.source} | ${t.title.replace(/\|/g, '/')} | ${domains} |`);
+    lines.push(`| ${cell(t.rank)} | ${cell(t.score)} | ${cell(t.tierLabel || t.tier)} | ${cell(t.source)} | ${cell(t.title)} | ${cell(domains)} |`);
   }
   lines.push('');
   return lines.join('\n');

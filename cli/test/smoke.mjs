@@ -360,6 +360,43 @@ async function main() {
     }
   });
 
+  await check('非法 --type 必须报错而非静默回落（且不进浏览器）', () => {
+    const cases = [
+      [['analytics', 'works', '--type', 'bogus'], /--type 不支持/],
+      [['analytics', 'income', '--type', 'bogus'], /--type 不支持/],
+      [['inspiration', '--type', 'hot'], /--type 不支持/],
+    ];
+    for (const [args, re] of cases) {
+      const r = runCliExpectFail([...args, '--account', 'smoke-offline']);
+      assert(r.code !== 0, `${args.join(' ')} 应返回非 0 退出码，实际 ${r.code}`);
+      assert(re.test(r.out), `${args.join(' ')} 错误信息不符，实际：${r.out.slice(0, 160)}`);
+      assert(!/playwright|browserType|Timeout/i.test(r.out), `${args.join(' ')} 不应进入浏览器流程`);
+    }
+  });
+
+  await check('标题按码点计数与截断（不切断代理对）', async () => {
+    // 与 publish-article.js 的截断逻辑等价；旧实现用 UTF-16 码元，
+    // 会把 emoji/扩展汉字算成 2 个字并可能切断代理对
+    const src = readFileSync(join(SRC_DIR, 'publish-article.js'), 'utf8');
+    assert(/\[\.\.\.String\(opts\.title\)\]/.test(src), '标题应按码点展开（[...String(opts.title)]）');
+    assert(/titleChars\.slice\(0, TITLE_MAX_LEN\)/.test(src), '截断应基于码点数组');
+    assert(!/title\.length > TITLE_MAX_LEN/.test(src), '不应再用 UTF-16 码元长度判断');
+
+    const cut = (t, max = 30) => { const c = [...String(t)]; return c.length > max ? c.slice(0, max).join('') : c.join(''); };
+    const LONE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    const emoji = '😀';
+    assert([...cut(emoji.repeat(35))].length === 30, 'emoji 标题应截断为 30 个码点');
+    assert(LONE.test(cut('a' + emoji.repeat(35))) === false, '截断结果不应含孤立代理字符');
+    assert([...cut('𠮷'.repeat(35))].length === 30, '扩展汉字应按码点计数');
+  });
+
+  await check('topic-recommend Markdown 表格单元格统一转义', async () => {
+    const src = readFileSync(join(SRC_DIR, 'topic-recommend.js'), 'utf8');
+    assert(/const cell = \(v\) =>/.test(src), '应存在统一转义函数 cell()');
+    // 只转义 title 的旧写法必须消失
+    assert(!/t\.title\.replace\(\/\\\|/.test(src), '不应只转义 title 的 |');
+  });
+
   await check('vl 分支判定覆盖全部分支', async () => {
     const { classifyVL } = await mod('verify.js');
     const cases = [

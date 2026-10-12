@@ -22,8 +22,12 @@ const INCOME_URLS = {
  */
 export async function getWorksAnalytics(opts) {
   const type = opts.type || 'all';
-  const url = WORKS_URLS[type] || WORKS_URLS.all;
-  return collectAnalytics(url, `works_${type}`, opts);
+  // 非法 type 不能静默回落到 all：那样会返回全量数据却把 category 标成 works_bogus，
+  // 调用方误以为已按类型过滤
+  if (!WORKS_URLS[type]) {
+    throw new Error(`--type 不支持：${type}（可选：${Object.keys(WORKS_URLS).join(' / ')}）`);
+  }
+  return collectAnalytics(WORKS_URLS[type], `works_${type}`, opts);
 }
 
 /**
@@ -64,8 +68,10 @@ export async function getFansAnalytics(opts) {
  */
 export async function getIncomeAnalytics(opts) {
   const type = opts.type || 'all';
-  const url = INCOME_URLS[type] || INCOME_URLS.all;
-  return collectAnalytics(url, `income_${type}`, opts);
+  if (!INCOME_URLS[type]) {
+    throw new Error(`--type 不支持：${type}（可选：${Object.keys(INCOME_URLS).join(' / ')}）`);
+  }
+  return collectAnalytics(INCOME_URLS[type], `income_${type}`, opts);
 }
 
 /**
