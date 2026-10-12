@@ -463,11 +463,46 @@ async function main() {
     assert(!/playwright|browserType|Timeout/i.test(r.out), '不应进入浏览器流程');
   });
 
+  await check('publish article 正文为空 / triple 张数不足时快速失败且不进浏览器', () => {
+    // 空正文：旧实现会跳过输入、发出只有标题的文章并报成功
+    const empty = runCliExpectFail(['publish', 'article', '--title', '冒烟测试', '--content', '   ', '--cover-mode', 'none']);
+    assert(empty.code !== 0, `空正文应返回非 0 退出码，实际 ${empty.code}`);
+    assert(/正文/.test(empty.out), `错误信息应提到正文，实际：${empty.out.slice(0, 200)}`);
+    assert(!/playwright|browserType|Timeout/i.test(empty.out), '空正文不应进入浏览器流程');
+
+    // 空正文文件
+    const emptyFile = join(tmpdir(), `toutiao-ops-smoke-empty-${Date.now()}.txt`);
+    writeFileSync(emptyFile, '   \n  \n', 'utf8');
+    tempDirs.push(emptyFile); // 复用清理逻辑（rmSync 对文件同样适用）
+    const fromFile = runCliExpectFail(['publish', 'article', '--title', '冒烟测试', '--content-file', emptyFile, '--cover-mode', 'none']);
+    assert(fromFile.code !== 0, `空正文文件应返回非 0 退出码，实际 ${fromFile.code}`);
+    assert(/正文/.test(fromFile.out), `错误信息应提到正文，实际：${fromFile.out.slice(0, 200)}`);
+
+    // 不存在的正文文件：应在启动浏览器前就报错
+    const missing = runCliExpectFail(['publish', 'article', '--title', '冒烟测试', '--content-file', join(tmpdir(), 'no-such-file-xyz.md'), '--cover-mode', 'none']);
+    assert(missing.code !== 0, `不存在的正文文件应返回非 0 退出码，实际 ${missing.code}`);
+    assert(/读取正文文件失败/.test(missing.out), `错误信息应提到读取失败，实际：${missing.out.slice(0, 200)}`);
+    assert(!/playwright|browserType|Timeout/i.test(missing.out), '不应进入浏览器流程');
+
+    // triple 只给 1 张封面：旧实现会以单图静默继续
+    const triple = runCliExpectFail(['publish', 'article', '--title', '冒烟测试', '--content', '正文', '--cover-mode', 'triple', '--cover', 'only-one.jpg']);
+    assert(triple.code !== 0, `triple 张数不足应返回非 0 退出码，实际 ${triple.code}`);
+    assert(/3 张封面/.test(triple.out), `错误信息应提到 3 张封面，实际：${triple.out.slice(0, 200)}`);
+    assert(!/playwright|browserType|Timeout/i.test(triple.out), '不应进入浏览器流程');
+  });
+
   // ── G. 退出码契约：run() 的 success:false / verdict:fail 同样必须 exit 1（不抛异常） ──
   await check('退出码契约：业务失败（success:false）走非零退出码且输出合法 JSON', async () => {
     const { runPipeline } = await mod('pipeline.js');
-    // 仅在漏斗确实降级时验证：仓库只带示例数据（CI 必然降级）；
-    // 本机若已放真实词表/域库，该命令会去启动浏览器，故跳过——冒烟测试不得联网/开浏览器。
+    // 用注入的空数据目录强制降级，而不是依赖宿主 cli/data 是否放了真实词表。
+    // 原实现 `if (!(await runPipeline([])).degraded) return;` 在本机（有真实词表时）
+    // 会直接跳过、什么都不断言，属于空跑用例。
+    const emptyDir = makeTempDataDir({});
+    const degraded = (await runPipeline([], { dataDir: emptyDir })).degraded;
+    assert(degraded, '注入空数据目录时漏斗应降级（夹具失效）');
+
+    // 该命令会真的去启动浏览器，故仅在漏斗确实降级时才跑（CI 必然降级）；
+    // 本机若已放真实词表/域库，走同一降级夹具无法影响 CLI 进程，故仍跳过。
     if (!(await runPipeline([])).degraded) return;
     const r = runCliExpectFail(['topic-recommend', '--account', 'smoke-offline']);
     assert(r.code === 1, `期望 exit 1，实际 ${r.code}`);

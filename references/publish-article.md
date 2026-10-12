@@ -20,7 +20,7 @@ toutiao-ops publish article --title "文章标题" --content "# Markdown 正文"
 | `--content` | 否* | - | 文章正文（支持 Markdown 语法） |
 | `--content-file` | 否* | - | 从文件读取正文（`.md` 文件自动识别为 Markdown） |
 | `--format` | 否 | `markdown` | 正文格式：`markdown`（富文本排版）/ `text`（纯文本逐字输入） |
-| `--cover` | 条件 | - | 封面图片本地路径。`--cover-mode single` / `triple` 时必填；`--cover-mode none` 时可省略 |
+| `--cover` | 条件 | - | 封面图片本地路径。`--cover-mode single` / `triple` 时必填；`triple` 需 3 张（逗号分隔），`--cover-mode none` 时可省略 |
 | `--cover-mode` | 否 | `single` | 封面模式：`single`（单图）/ `triple`（三图）/ `none`（无封面） |
 | `--first-publish` | 否 | false | 勾选「头条首发」 |
 | `--collection` | 否 | - | 添加至合集名称 |
@@ -29,7 +29,8 @@ toutiao-ops publish article --title "文章标题" --content "# Markdown 正文"
 | `--draft` | 否 | false | 存为草稿而非直接发布 |
 | `--headless` | 否 | false | 无头模式运行 |
 
-*`--content` 和 `--content-file` 至少提供一个。
+*`--content` 和 `--content-file` **必须提供一个，且内容不能为空**（全空白会被拒绝，避免发出只有标题的空正文文章）。
+`--content-file` 指向的文件若不存在或不可读，会在启动浏览器前直接报错。
 
 ## 富文本排版（Markdown 模式）
 
