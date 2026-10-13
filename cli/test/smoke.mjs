@@ -420,6 +420,51 @@ async function main() {
     assert(/seen\.has\(key\)/.test(src), '应使用复合去重键');
   });
 
+  await check('发布核验：短正文残留可检出（B2）+ 视频页要求正向信号（B6）', async () => {
+    const { verifyPublishOnPage, failureResult } = await mod('publish-verify.js');
+    const stub = (state) => ({ evaluate: async () => state });
+    const BASE = { url: 'https://mp.toutiao.com/profile_v4/graphic/publish', editorLen: 0, blocked: '', containsExpected: false, hasSuccessText: false };
+
+    // B2：正文 12 字仍留在编辑器（旧口径 editorLen>20 判不出来）
+    const short = await verifyPublishOnPage(
+      stub({ ...BASE, editorLen: 12, containsExpected: true }),
+      '[contenteditable="true"]', { expectText: '这是一段十二个字的短正文内容' }
+    );
+    assert(short.reallyPublished === false, 'B2: 短正文残留应判未发布');
+    assert(short.stillInEditor === true, 'B2: stillInEditor 应为 true');
+    assert(/与本次正文匹配/.test(failureResult('publish', short).reason), 'B2: reason 应说明与本次正文匹配');
+
+    // B2 不误伤：编辑器已清空仍判成功
+    const ok = await verifyPublishOnPage(stub({ ...BASE }), '[contenteditable="true"]', { expectText: '正文' });
+    assert(ok.reallyPublished === true, 'B2: 编辑器已清空应判成功');
+
+    // B6：视频页停留在原地址且无成功提示 → 必须失败（旧实现只看"无拦截词"会判成功）
+    const stuck = await verifyPublishOnPage(
+      stub({ ...BASE, url: 'https://mp.toutiao.com/profile_v4/xigua/upload-video' }),
+      '[contenteditable="true"]', { requirePositive: true, originalUrl: 'https://mp.toutiao.com/profile_v4/xigua/upload-video' }
+    );
+    assert(stuck.reallyPublished === false, 'B6: 无正向信号应判未发布');
+    assert(stuck.positive === false, 'B6: positive 应为 false');
+
+    // B6：已离开原地址 → 成功
+    const left = await verifyPublishOnPage(
+      stub({ ...BASE, url: 'https://mp.toutiao.com/profile_v4/xigua/content' }),
+      '[contenteditable="true"]', { requirePositive: true, originalUrl: 'https://mp.toutiao.com/profile_v4/xigua/upload-video' }
+    );
+    assert(left.reallyPublished === true, 'B6: 已离开原地址应判成功');
+
+    // 未要求正向信号时 positive 为 null（区分"未检查"与"未通过"）
+    assert(ok.positive === null, 'positive 未检查时应为 null');
+
+    // 源码级：两个调用点都要传新参数，避免回退
+    const art = readFileSync(join(SRC_DIR, 'publish-article.js'), 'utf8');
+    assert(/expectText: content/.test(art), 'publish-article 应传 expectText');
+    const vid = readFileSync(join(SRC_DIR, 'publish-video.js'), 'utf8');
+    assert(/requirePositive: true/.test(vid), 'publish-video 应传 requirePositive');
+    const wtt = readFileSync(join(SRC_DIR, 'publish-weitoutiao.js'), 'utf8');
+    assert(/containsExpected/.test(wtt), 'publish-weitoutiao 应做签名比对');
+  });
+
   await check('vl 分支判定覆盖全部分支', async () => {
     const { classifyVL } = await mod('verify.js');
     const cases = [

@@ -230,8 +230,9 @@ export async function publishArticle(opts) {
     await sleep(2000, 4000);
     await waitForStable(page);
 
-    // 发布后验证：编辑器残留正文或出现拦截提示，都视为未真正发布
-    const verify = await verifyPublishOnPage(page);
+    // 发布后验证：编辑器残留正文或出现拦截提示，都视为未真正发布。
+    // 传入 expectText 启用签名比对——正文 ≤20 字时旧的长度阈值会漏判（B2）
+    const verify = await verifyPublishOnPage(page, '[contenteditable="true"]', { expectText: content });
     if (!verify.reallyPublished) {
       return failureResult('publish', verify, { title, confirmSteps });
     }
