@@ -13,11 +13,22 @@ import { fileURLToPath } from 'url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(HERE, '..', 'output', 'probe');
 
+// 布尔开关：只有这些选项不消费下一个 token，避免 --account --headless 把账号吃成 '--headless'
+const BOOL_FLAGS = new Set(['headless']);
+
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a.startsWith('--')) out[a.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = argv[++i];
+    if (!a.startsWith('--')) continue;
+    const key = a.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    if (BOOL_FLAGS.has(key)) { out[key] = true; continue; }
+    const next = argv[i + 1];
+    if (next === undefined || next.startsWith('--')) {
+      throw new Error(`选项 ${a} 缺少取值\n用法：node tools/probe-content-list.mjs --account <账号名> [--headless]`);
+    }
+    out[key] = next;
+    i++;
   }
   return out;
 }

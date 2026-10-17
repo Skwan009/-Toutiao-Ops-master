@@ -143,6 +143,9 @@ export async function publishVideo(opts) {
       dbg({ debug_before: beforePath });
     }
 
+    // 记录提交前的实际地址（上传后 URL 可能已带参数或已跳转，不能硬编码 UPLOAD_URL）
+    const beforeSubmitUrl = page.url();
+
     if (opts.draft) {
       const draftBtn = page.locator('button:has-text("存草稿")').first();
       await draftBtn.scrollIntoViewIfNeeded().catch(() => {});
@@ -166,8 +169,13 @@ export async function publishVideo(opts) {
       dbg({ debug_after: afterPath, final_url: page.url() });
     }
 
-    // 发布后验证：页面出现拦截提示视为未真正发布（视频页无 contenteditable，主要靠提示正则）
-    const verify = await verifyPublishOnPage(page);
+    // 发布后验证：视频页**没有 contenteditable**（正文是标题 input，不是富文本编辑器），
+    // 因此"编辑器为空 + 没有拦截词"在这里退化成"只要没匹配到拦截词就算成功"（B6）。
+    // 改为要求正向信号：已离开提交前的地址，或页面出现发布/保存成功提示。
+    const verify = await verifyPublishOnPage(page, '[contenteditable="true"]', {
+      requirePositive: true,
+      originalUrl: beforeSubmitUrl,
+    });
     if (!verify.reallyPublished) {
       return failureResult(opts.draft ? 'draft' : 'publish', verify, { title: opts.title });
     }

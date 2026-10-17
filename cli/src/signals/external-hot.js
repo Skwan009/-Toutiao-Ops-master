@@ -8,7 +8,7 @@ import { BASE_DIR } from '../paths.js';
  * 外部热点信号源（二级权重）——纯 Node fetch，不用浏览器。
  *
  * - 数据源来自 config/providers.json（数组，可插拔）
- * - 同源 30 分钟缓存；429 熔断；失败降级下一个源；全失败返回空且标记 degraded（不阻断主流程）
+ * - 同源 30 分钟缓存；429 只中断本次轮询（无当日熔断状态）；失败降级下一个源；全失败返回空且标记 degraded（不阻断主流程）
  */
 const HERE = dirname(fileURLToPath(import.meta.url));            // cli/src/signals
 const CONFIG_PATH = join(HERE, '..', '..', 'config', 'providers.json');

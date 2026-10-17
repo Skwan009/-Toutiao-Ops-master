@@ -13,7 +13,7 @@ install:
 	cd $(CLI) && npm install --ignore-scripts
 
 browser:
-	npx playwright install chromium
+	cd $(CLI) && npx playwright install chromium
 
 test:
 	cd $(CLI) && npm test

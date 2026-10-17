@@ -37,16 +37,16 @@ function heatRaw(it) {
 
 const epochOf = (it) => it.createEpoch || it.publishTime || it.epoch || 0;
 
-function scoreItems(items, { components, halfLifeHours, tiers, tierMode }) {
+function scoreItems(items, { components, halfLifeHours, tiers, tierMode, domainHitSaturation, tierComponentWeight, unknownFreshness }) {
   const maxHeat = Math.max(1, ...items.map(heatRaw));
   const now = Date.now() / 1000;
 
   return items
     .map((it) => {
-      const domain = Math.min((it.domainHits || 0) / 3, 1);
+      const domain = Math.min((it.domainHits || 0) / domainHitSaturation, 1);
       const heat = heatRaw(it) / maxHeat;
       const e = epochOf(it);
-      const fresh = e ? Math.exp(-((now - e) / 3600) / halfLifeHours) : 0.8;
+      const fresh = e ? Math.exp(-((now - e) / 3600) / halfLifeHours) : unknownFreshness;
       const tierWeight = tiers?.[String(it.tier)]?.weight ?? 0.5;
 
       // 域命中分量仅在漏斗写入过 domainHits 时可用；不可用时按剩余分量重新归一，
@@ -61,7 +61,7 @@ function scoreItems(items, { components, halfLifeHours, tiers, tierMode }) {
       const norm = wsum > 0 ? wsum : 1;
       const base = Object.values(parts).reduce((s, v) => s + v, 0) / norm;
       // 层级作乘数：保证站外（二级 0.5）整体低于站内（一级 1.0）
-      const score = tierMode === 'component' ? base + tierWeight * 0.2 : base * tierWeight;
+      const score = tierMode === 'component' ? base + tierWeight * tierComponentWeight : base * tierWeight;
 
       const normalized = Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, v / norm]));
       return {
@@ -90,6 +90,9 @@ function scoreItems(items, { components, halfLifeHours, tiers, tierMode }) {
 }
 
 function renderMarkdown(topics, meta) {
+  // 表格单元格统一转义：原实现只处理了 title 的 |，
+  // 来源 / 层级 / 领域里出现 | 同样会破表
+  const cell = (v) => String(v ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
   const lines = [];
   lines.push(`# 选题推荐 · ${meta.account}`);
   lines.push('');
@@ -106,7 +109,7 @@ function renderMarkdown(topics, meta) {
   lines.push('|---|------|------|------|------|------|');
   for (const t of topics) {
     const domains = (t.domains || []).join('/') || '-';
-    lines.push(`| ${t.rank} | ${t.score} | ${t.tierLabel || t.tier} | ${t.source} | ${t.title.replace(/\|/g, '/')} | ${domains} |`);
+    lines.push(`| ${cell(t.rank)} | ${cell(t.score)} | ${cell(t.tierLabel || t.tier)} | ${cell(t.source)} | ${cell(t.title)} | ${cell(domains)} |`);
   }
   lines.push('');
   return lines.join('\n');
@@ -117,7 +120,18 @@ export async function recommendTopics(opts = {}) {
   const ranking = weights.ranking || {};
   // 缺省值与 config/weights.json 保持一致，避免配置丢失时打分口径漂移
   const components = ranking.components || { domain: 0.45, heat: 0.3, fresh: 0.25 };
-  const topN = Number(opts.top) || ranking.topN || 20;
+  // --top 显式传入但非法时不要静默回退到默认值（原 Number(opts.top) || ... 会吞掉
+  // NaN 与 0），否则调用方以为按自己的条数输出，实际拿到默认 20 条
+  let topN;
+  if (opts.top != null && String(opts.top).trim() !== '') {
+    const n = Number(opts.top);
+    if (!Number.isInteger(n) || n <= 0) {
+      throw new Error(`--top 需要正整数，当前：${opts.top}`);
+    }
+    topN = n;
+  } else {
+    topN = ranking.topN ?? 20;
+  }
   const account = opts.account || 'default';
   const generatedAt = new Date().toISOString();
   const useFilter = opts.filter !== false;
@@ -153,6 +167,9 @@ export async function recommendTopics(opts = {}) {
     halfLifeHours: ranking.freshHalfLifeHours || 72,
     tiers: weights.tiers,
     tierMode: ranking.tierMode || 'multiplier',
+    domainHitSaturation: ranking.domainHitSaturation ?? 3,
+    tierComponentWeight: ranking.tierComponentWeight ?? 0.2,
+    unknownFreshness: ranking.unknownFreshness ?? 0.8,
   });
   const topics = scored.slice(0, topN);
 

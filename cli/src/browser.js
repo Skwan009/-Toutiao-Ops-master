@@ -72,10 +72,10 @@ export async function launchBrowser(opts = {}) {
     geolocation: undefined,
   });
 
-  // 预先拒绝地理位置等权限，避免弹出浏览器权限请求
-  try {
-    await context.grantPermissions([], { origin: 'https://mp.toutiao.com' });
-  } catch {}
+  // 位置/通知等权限已在 launchPersistentContext 用 permissions: [] 关闭，
+  // 无需再调用 grantPermissions（实测其第 2 参数在本版 Playwright 是 origin 字符串，
+  // 传 { origin } 对象会抛 TypeError: Invalid URL，被 catch 静默吞掉，属无效调用）。
+  // 如需显式清空，应使用 context.clearPermissions()。
 
   const page = context.pages()[0] || await context.newPage();
   return { context, page };
@@ -121,12 +121,10 @@ export async function waitForStable(page, timeout = 10000) {
  * 在任何需要点击页面元素之前调用。
  */
 export async function dismissOverlays(page) {
-  // 关闭浏览器级别权限弹窗（地理位置等）
-  page.context().on('page', () => {});
-  try {
-    // 拒绝位置权限
-    await page.context().grantPermissions([], { origin: 'https://mp.toutiao.com' });
-  } catch {}
+  // 注意：不要在这里 page.context().on('page', ...) 注册监听器。
+  // 该方法一次运行会被调用多次（发布 3 次、verify 2 次等），每次都会追加一个
+  // 永不移除的空监听器，累积后触发 MaxListenersExceededWarning 并造成无谓开销。
+  // 位置权限已在 launchBrowser 里通过 permissions: [] 关闭，无需在此重复处理。
 
   for (let round = 0; round < 3; round++) {
     await sleep(500, 800);

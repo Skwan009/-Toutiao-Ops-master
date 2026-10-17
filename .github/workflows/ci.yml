@@ -24,6 +24,13 @@ jobs:
         working-directory: cli
         run: npm ci --ignore-scripts
 
+      # 与 Makefile 的 check 目标等价：tools/ 下的一次性脚本此前从未做过语法校验
+      - name: Syntax check (src / tools / test)
+        working-directory: cli
+        run: |
+          find src tools test -type f \( -name '*.js' -o -name '*.mjs' \) -print0 \
+            | xargs -0 -n1 node --check
+
       - name: Smoke test (offline, no browser)
         working-directory: cli
         run: npm test

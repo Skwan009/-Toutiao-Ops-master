@@ -35,7 +35,9 @@ function normalize(item) {
 
 async function collectItems(page, opts) {
   const pageSize = Number.parseInt(opts.pageSize, 10) || 50;
-  const data = await fetchWorks(page, pageSize);
+  // 必须传对象：fetchWorks(page, opts = {}) 期望 { pageSize }，
+  // 传数字会被解构成全默认值，pageSize 静默失效
+  const data = await fetchWorks(page, { pageSize });
   return (data.contents || []).map(normalize);
 }
 

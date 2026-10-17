@@ -120,35 +120,54 @@ export async function publishWeitoutiao(opts) {
     // 旧实现点完按钮就无条件返回 success:true —— 头条发布页在内容不合法、
     // 或有未处理的弹窗时会静默失败，回执照样是"成功"，导致内容实际没发出去。
     // 现在改为：读页面真实状态，判断是否已跳转到内容管理页 / 编辑器是否已清空。
+    // fail-closed：evaluate 抛错时"读不到状态"必须算未确认，不能当作已发布
+    // 签名比对：微头条正文常很短（≤20 字），旧的长度阈值判不出"正文仍留在编辑器"，
+    // 会把被拦截的短正文误报成发布成功（B2）。
+    // 长度自适应：正文短于 12 字时取全文，否则短正文永远匹配不上
+    const expectSig = (() => {
+      const cleaned = String(opts.content || '')
+        .replace(/[\s\u3000]+/g, '')
+        .replace(/[#*`>~|[\]()!_\\-]/g, '');
+      return cleaned.slice(0, Math.min(12, cleaned.length));
+    })();
+    let evalFailed = false;
     const verify = await page
-      .evaluate(() => {
+      .evaluate((sig) => {
         const url = location.href;
         const editor = document.querySelector('[contenteditable="true"]');
         const editorText = editor ? (editor.innerText || '').trim() : '';
-        // 正文仍留在编辑器里 = 没发出去
-        const stillInEditor = editorText.length > 20;
+        const norm = editorText.replace(/[\s\u3000]+/g, '').replace(/[#*`>~|[\]()!_\\-]/g, '');
+        // 正文仍留在编辑器里 = 没发出去；长度阈值 + 与本次正文双向比对，双判据
+        const containsExpected = Boolean(sig) && sig.length >= 2
+          && (norm.includes(sig) || sig.includes(norm.slice(0, sig.length)));
+        const stillInEditor = editorText.length > 20 || containsExpected;
         // 页面出现这些字样说明发布被拦截
         const body = document.body.innerText || '';
         const blocked = [];
         if (/存在风险|无法发布|请修改|内容违规|发布失败|去重|重复内容/.test(body))
           blocked.push(body.match(/存在风险|无法发布|请修改|内容违规|发布失败|去重|重复内容/)[0]);
-        return { url, stillInEditor, editorLen: editorText.length, blocked };
-      })
-      .catch(() => ({ url: '', stillInEditor: null, editorLen: 0, blocked: [] }));
+        return { url, stillInEditor, editorLen: editorText.length, blocked, containsExpected };
+      }, expectSig)
+      .catch(() => {
+        evalFailed = true;
+        return { url: '', stillInEditor: null, editorLen: 0, blocked: [], containsExpected: false };
+      });
 
     // 判定"提交"的依据：编辑器已清空（正文交出去了）且页面无拦截提示。
     // ⚠️ 不要用"跳转到内容管理页"作条件 —— 头条发布成功后停在
     //    /profile_v4/weitoutiao（微头条管理页），不是 /content/all，
     //    拿内容管理页当判据会把成功误报成失败（10-04 实测踩过）。
-    const reallyPublished = !verify.stillInEditor && verify.blocked.length === 0;
+    const reallyPublished = !evalFailed && !verify.stillInEditor && verify.blocked.length === 0;
 
     if (!reallyPublished) {
       const reason =
-        verify.stillInEditor
-          ? `正文仍留在编辑器（${verify.editorLen} 字）—— 发布未生效，多半是页面有未处理弹窗或内容被拦截`
+        evalFailed
+          ? `页面状态读取失败（核验时可能发生了跳转或页面已关闭），未确认发布结果（当前 ${verify.url || '未知'}）`
+          : verify.stillInEditor
+          ? `正文仍留在编辑器（${verify.editorLen} 字${verify.containsExpected ? '，且与本次正文匹配' : ''}）—— 发布未生效，多半是页面有未处理弹窗或内容被拦截`
           : verify.blocked.length
           ? `页面出现拦截提示："${verify.blocked.join(', ')}"`
-          : `未跳转到内容管理页（当前 ${verify.url || '未知'}）`;
+          : `未确认发布成功（当前 ${verify.url || '未知'}）`;
       console.error('[FAIL] ' + reason);
       console.error('[FAIL] 请勿重试重发！先在草稿箱/作品管理确认实际状态，' +
         '避免内容叠加。CLI 已修复"打字前清空编辑器"，重复内容问题已解决。');

@@ -2,10 +2,11 @@
  * 一次性探测：作品管理页到底发了哪些 JSON 接口（用于校准 verify.json 的 feedApiMatch）。
  * 只读，不写入任何数据。
  *
- * 用法：node tools/probe-content-feed.mjs --account <账号名>
+ * 用法：node tools/probe-content-feed.mjs --account <账号名> [--headless]
  */
 import { launchBrowser, closeBrowser, sleep, waitForStable, dismissOverlays } from '../src/browser.js';
 import { ensureLoggedIn } from '../src/auth-guard.js';
+import { drainResponses } from '../src/verify.js';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -14,11 +15,22 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(HERE, '..', 'output', 'probe');
 const CONTENT_PAGE = 'https://mp.toutiao.com/profile_v4/manage/content/all';
 
+// 布尔开关：只有这些选项不消费下一个 token，避免 --account --headless 把账号吃成 '--headless'
+const BOOL_FLAGS = new Set(['headless']);
+
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a.startsWith('--')) out[a.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = argv[++i];
+    if (!a.startsWith('--')) continue;
+    const key = a.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    if (BOOL_FLAGS.has(key)) { out[key] = true; continue; }
+    const next = argv[i + 1];
+    if (next === undefined || next.startsWith('--')) {
+      throw new Error(`选项 ${a} 缺少取值\n用法：node tools/probe-content-feed.mjs --account <账号名> [--headless]`);
+    }
+    out[key] = next;
+    i++;
   }
   return out;
 }
@@ -30,15 +42,18 @@ async function main() {
 
   const { context, page } = await launchBrowser(opts);
   const seen = new Set();
-  page.on('response', async (r) => {
-    try {
-      const url = r.url();
-      if (!url.startsWith('http')) return;
-      const ct = r.headers()['content-type'] || '';
-      if (!ct.includes('json')) return;
-      const key = r.request().method() + ' ' + url.split('?')[0];
-      if (seen.has(key)) return;
-      seen.add(key);
+  // response 回调是异步的：计数在途数量，close 前必须归零，否则报告会少记接口
+  const inflight = { n: 0 };
+  page.on('response', (r) => {
+    const url = r.url();
+    if (!url.startsWith('http')) return;
+    const ct = r.headers()['content-type'] || '';
+    if (!ct.includes('json')) return;
+    const key = r.request().method() + ' ' + url.split('?')[0];
+    if (seen.has(key)) return;
+    seen.add(key);
+    inflight.n++;
+    (async () => {
       let probe = null;
       try {
         const j = await r.json();
@@ -51,9 +66,11 @@ async function main() {
           assembleCell: Boolean(arr && arr[0] && arr[0].assembleCell),
           totalNumber: j && j.total_number != null ? j.total_number : null,
         };
-      } catch { /* 非 JSON 体 */ }
-      rep.jsonApis.push({ method: r.request().method(), url, status: r.status(), probe });
-    } catch { /* ignore */ }
+      } catch { /* 非 JSON 体 */ } finally {
+        rep.jsonApis.push({ method: r.request().method(), url, status: r.status(), probe });
+        inflight.n--;
+      }
+    })();
   });
 
   try {
@@ -76,7 +93,6 @@ async function main() {
       await page.mouse.wheel(0, 2500).catch(() => {});
       await sleep(2000, 3000);
     }
-    rep.phase2Apis = rep.jsonApis.slice(rep.phase1ApiCount);
 
     rep.finalUrl = page.url();
     rep.textLen = await page.evaluate(() => (document.body.innerText || '').length).catch(() => null);
@@ -86,8 +102,12 @@ async function main() {
       hasLogin: /登录|扫码/.test(document.body.innerText || ''),
     })).catch(() => null);
   } finally {
+    // 等在途响应落定再关：否则报告缺接口，而它正是用来校准 verify.json 的证据
+    if (!(await drainResponses(inflight))) rep.errors.push('部分响应未在超时内返回，报告可能不完整');
     await closeBrowser(context);
   }
+
+  rep.phase2Apis = rep.jsonApis.slice(rep.phase1ApiCount || 0);
 
   const file = join(OUT_DIR, `content-feed_${opts.account || 'default'}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
   writeFileSync(file, JSON.stringify(rep, null, 2));

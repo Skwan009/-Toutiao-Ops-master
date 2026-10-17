@@ -29,6 +29,30 @@ export async function publishArticle(opts) {
     throw new Error('缺少封面图：--cover-mode single / triple 时必须提供 --cover <path>；若确实不要封面请加 --cover-mode none');
   }
 
+  // 正文也必须在启动浏览器前读入并校验：
+  //  1) 正文为空时若照旧跳过输入，会发出一条"只有标题"的文章，且核验按"编辑器已清空"判成功；
+  //  2) --content-file 不存在/不可读时，原先要等浏览器起来并登录导航完才抛裸 ENOENT。
+  let content = opts.content || '';
+  if (opts.contentFile) {
+    try {
+      content = readFileSync(opts.contentFile, 'utf-8');
+    } catch (e) {
+      throw new Error(`读取正文文件失败：${opts.contentFile}（${e.message}）`);
+    }
+  }
+  content = content.replace(/\\n/g, '\n');
+  if (!content.trim()) {
+    throw new Error('正文为空：请通过 --content 或 --content-file 提供正文内容');
+  }
+
+  // triple 模式需要 3 张封面：只给 1 张会以单图继续，等于静默降级
+  if (coverMode === 'triple') {
+    const coverCount = String(opts.cover || '').split(',').map((p) => p.trim()).filter(Boolean).length;
+    if (coverCount < 3) {
+      throw new Error(`--cover-mode triple 需要 3 张封面图，当前只提供 ${coverCount} 张：${opts.cover}`);
+    }
+  }
+
   const { context, page } = await launchBrowser(opts);
   try {
     await ensureLoggedIn(page);
@@ -38,12 +62,16 @@ export async function publishArticle(opts) {
     await dismissOverlays(page);
 
     // ── 标题（2~30 字） ──
-    let title = opts.title;
-    if (title.length < TITLE_MIN_LEN) {
-      throw new Error(`标题过短：至少 ${TITLE_MIN_LEN} 个字，当前 ${title.length} 个字`);
+    // 按码点计数/截断：String.length 与 slice 基于 UTF-16 码元，
+    // emoji 与扩展汉字（如 𠮷）会被算作 2 个字，且截断点落在代理对中间时
+    // 会产生孤立代理字符并输入到页面
+    const titleChars = [...String(opts.title)];
+    let title = titleChars.join('');
+    if (titleChars.length < TITLE_MIN_LEN) {
+      throw new Error(`标题过短：至少 ${TITLE_MIN_LEN} 个字，当前 ${titleChars.length} 个字`);
     }
-    if (title.length > TITLE_MAX_LEN) {
-      title = title.slice(0, TITLE_MAX_LEN);
+    if (titleChars.length > TITLE_MAX_LEN) {
+      title = titleChars.slice(0, TITLE_MAX_LEN).join('');
       process.stderr.write(`[warn] 标题超过 ${TITLE_MAX_LEN} 字限制，已自动截断为：${title}\n`);
     }
     const titleSelector = 'textarea[placeholder*="标题"], input[placeholder*="标题"], [class*="title"] textarea, [class*="title"] input';
@@ -53,13 +81,8 @@ export async function publishArticle(opts) {
     await page.keyboard.type(title, { delay: 50 + Math.random() * 80 });
     await sleep(500, 1000);
 
-    // ── 正文 ──
-    let content = opts.content || '';
-    if (opts.contentFile) {
-      content = readFileSync(opts.contentFile, 'utf-8');
-    }
-    content = content.replace(/\\n/g, '\n');
-    if (content) {
+    // ── 正文 ──（content 已在启动浏览器前读入并校验非空）
+    {
       const editorSelector = '[contenteditable="true"]';
       await page.waitForSelector(editorSelector, { timeout: 15000 });
       await sleep(300, 600);
@@ -70,6 +93,22 @@ export async function publishArticle(opts) {
         await pasteMarkdownAsRichText(page, content, editorSelector);
       } else {
         await typePlainText(page, content);
+      }
+
+      // 读回校验：注入后编辑器必须真的有内容，否则后面会把"空正文"当成发布成功
+      // （合成 ClipboardEvent 被编辑器忽略、点击落到别的 contenteditable 等都会导致静默丢失）
+      const injected = await page
+        .evaluate((sel) => {
+          const el = document.querySelector(sel);
+          return el ? (el.innerText || '').trim().length : -1;
+        }, editorSelector)
+        .catch(() => -1);
+      if (injected <= 0) {
+        throw new Error('正文注入失败：编辑器在写入后仍为空，已中止发布（避免发出空正文文章）');
+      }
+      // 编辑器字符数明显少于预期时告警（不中断：富文本渲染后 innerText 与源文长度本就不等）
+      if (injected < content.trim().length * 0.5) {
+        process.stderr.write(`[warn] 正文读回长度 ${injected} 明显小于输入长度 ${content.trim().length}，请核对发布结果\n`);
       }
     }
     await sleep(500, 1000);
@@ -105,10 +144,48 @@ export async function publishArticle(opts) {
     // ── 发布 / 草稿 ──
     await dismissOverlays(page);
     if (opts.draft) {
-      // 页面底部没有独立草稿按钮，草稿已自动保存
+      // 原实现直接 return success:true（注释称"草稿已自动保存"），但从不校验，
+      // 自动保存未落库时会报 draft_saved，属假成功。改为：优先点显式「存草稿」，
+      // 再找正向保存信号；确认不了就如实报失败（正文仍在编辑器里，不会丢内容）。
+      const draftBtn = page.locator('button:has-text("存草稿")').first();
+      const hasDraftBtn = (await draftBtn.count()) > 0;
+      if (hasDraftBtn) {
+        await draftBtn.scrollIntoViewIfNeeded().catch(() => {});
+        await sleep(300, 500);
+        await draftBtn.click({ force: true, timeout: 10000 }).catch(() => {});
+      }
+      await sleep(2000, 4000);
+      await waitForStable(page);
+
+      const draftVerify = await page
+        .evaluate(() => {
+          const body = document.body.innerText || '';
+          const saved = /已保存|保存成功|保存草稿成功|草稿已保存|已自动保存|已存入草稿|已存为草稿|保存于/.test(body);
+          const editor = document.querySelector('[contenteditable="true"]');
+          const editorLen = editor ? (editor.innerText || '').trim().length : 0;
+          return { saved, editorLen, url: location.href };
+        })
+        .catch(() => ({ saved: false, editorLen: -1, url: '' }));
+
+      if (!draftVerify.saved) {
+        const reason = draftVerify.editorLen === -1
+          ? '草稿页状态读取失败，未能确认草稿是否保存'
+          : '未检测到草稿保存成功提示，无法确认草稿已落库';
+        process.stderr.write(`[FAIL] ${reason}\n[FAIL] 请到草稿箱核对；正文仍在编辑器中，可直接手动保存\n`);
+        return {
+          success: false,
+          action: 'draft_failed',
+          verified: false,
+          reason,
+          title,
+          url: page.url(),
+        };
+      }
+
       return {
         success: true,
         action: 'draft_saved',
+        verified: true,
         title,
         url: page.url(),
       };
@@ -123,22 +200,41 @@ export async function publishArticle(opts) {
     await sleep(3000, 5000);
     await waitForStable(page);
 
-    // 预览页面需要再次点击"确认发布"
-    const confirmPublish = page.locator('button:has-text("确认发布"), button:has-text("发布")').first();
-    await confirmPublish.click({ timeout: 10000 }).catch(() => {});
+    // 预览页面需要再次点击"确认发布"。
+    // ⚠️ 不能再用 button:has-text("发布") 兜底：:has-text 是子串匹配，
+    //    "预览并发布"也含"发布"，.first() 会重新命中编辑器页的按钮而不是确认按钮。
+    //    这里优先精确找"确认发布"，退化时用 :text-is 精确匹配"发布"，并记录是否命中。
+    const confirmSteps = { confirmPublish: false, confirmDialog: false };
+
+    const confirmPublish = page.locator('button:has-text("确认发布")').first();
+    if ((await confirmPublish.count()) > 0) {
+      await confirmPublish.click({ timeout: 10000 }).catch(() => {});
+      confirmSteps.confirmPublish = true;
+    } else {
+      // 精确文本匹配，排除"预览并发布"
+      const exactPublish = page.locator('button:text-is("发布")').first();
+      if ((await exactPublish.count()) > 0) {
+        await exactPublish.click({ timeout: 10000 }).catch(() => {});
+        confirmSteps.confirmPublish = true;
+      }
+    }
     await sleep(2000, 4000);
 
-    // 可能还有二次确认弹窗
-    const confirmBtn = page.locator('button:has-text("确定"), button:has-text("确认")').first();
-    await confirmBtn.click({ timeout: 5000 }).catch(() => {});
+    // 可能还有二次确认弹窗（限定在可见的对话框内，避免误点页面其他"确定"）
+    const confirmBtn = page.locator('[role="dialog"] button:has-text("确定"), .byte-modal-wrapper button:has-text("确定")').first();
+    if ((await confirmBtn.count()) > 0 && (await confirmBtn.isVisible().catch(() => false))) {
+      await confirmBtn.click({ timeout: 5000 }).catch(() => {});
+      confirmSteps.confirmDialog = true;
+    }
 
     await sleep(2000, 4000);
     await waitForStable(page);
 
-    // 发布后验证：编辑器残留正文或出现拦截提示，都视为未真正发布
-    const verify = await verifyPublishOnPage(page);
+    // 发布后验证：编辑器残留正文或出现拦截提示，都视为未真正发布。
+    // 传入 expectText 启用签名比对——正文 ≤20 字时旧的长度阈值会漏判（B2）
+    const verify = await verifyPublishOnPage(page, '[contenteditable="true"]', { expectText: content });
     if (!verify.reallyPublished) {
-      return failureResult('publish', verify, { title });
+      return failureResult('publish', verify, { title, confirmSteps });
     }
 
     return {
@@ -147,6 +243,7 @@ export async function publishArticle(opts) {
       title,
       url: page.url(),
       verified: true,
+      confirmSteps,
     };
   } finally {
     await closeBrowser(context);

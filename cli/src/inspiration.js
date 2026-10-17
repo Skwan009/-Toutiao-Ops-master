@@ -12,7 +12,12 @@ const URLS = {
  */
 export async function listInspiration(opts) {
   const type = opts.type || 'activity';
-  const targetUrl = URLS[type] || URLS.activity;
+  // 非法 type 不能静默回落：原实现抓的是 activity 页面，返回体 type 却原样回显
+  // 用户传的值（如 "hot"），输出自相矛盾且无任何报错
+  if (!URLS[type]) {
+    throw new Error(`--type 不支持：${type}（可选：${Object.keys(URLS).join(' / ')}）`);
+  }
+  const targetUrl = URLS[type];
 
   const { context, page } = await launchBrowser(opts);
   try {

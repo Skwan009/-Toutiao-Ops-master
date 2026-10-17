@@ -22,7 +22,8 @@ export const domainMatch = {
       return { kept: items, dropped: [], degraded: loaded.degraded, reason: '域库无生效领域' };
     }
 
-    const minHits = cfg.minHits || 1;
+    // 用 ?? 而非 ||：minHits: 0 是合法配置（等价于不过滤），|| 会把它当成未配置而回退成 1
+    const minHits = cfg.minHits ?? 1;
     const kept = [];
     const dropped = [];
     for (const it of items) {

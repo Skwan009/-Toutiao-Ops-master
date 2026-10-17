@@ -98,23 +98,41 @@ export async function likeComment(opts) {
       return { success: false, error: '未找到点赞按钮' };
     }
 
-    // 记录点赞前状态
+    // 记录点赞前状态：digg 是开关按钮，已点赞时再点会「取消赞」，
+    // 因此必须同时取类名，先判断当前是否已点赞。
     const beforeText = await diggBtn.evaluate(el => el.innerText?.trim());
+    const beforeClass = await diggBtn.evaluate(el => el.className || '');
+    const wasLiked = beforeClass.includes('active') || beforeClass.includes('liked');
+
+    if (wasLiked) {
+      // 已经是点赞态：不点击（避免误取消），如实返回跳过
+      return {
+        success: true,
+        action: 'like_skipped',
+        skipped: true,
+        commentId: opts.commentId,
+        before: beforeText,
+        message: '该评论已处于点赞状态，未重复点击（避免取消赞）',
+      };
+    }
+
     await diggBtn.click();
     await sleep(1000, 1500);
 
     // 检查点赞后状态变化
     const afterText = await diggBtn.evaluate(el => el.innerText?.trim());
-    const afterClass = await diggBtn.evaluate(el => el.className);
-    const liked = afterText !== beforeText || afterClass.includes('active') || afterClass.includes('liked');
+    const afterClass = await diggBtn.evaluate(el => el.className || '');
+    const liked = afterClass.includes('active') || afterClass.includes('liked') || afterText !== beforeText;
 
     return {
-      success: true,
-      action: 'liked',
+      // success 必须由 liked 决定：点完仍是未点赞态 = 本次操作没生效
+      success: liked,
+      action: liked ? 'liked' : 'like_failed',
       commentId: opts.commentId,
       before: beforeText,
       after: afterText,
-      message: liked ? '点赞成功' : '点赞状态已切换（可能已取消赞）',
+      ...(liked ? {} : { error: '点击后仍未变为点赞态，点赞可能未生效' }),
+      message: liked ? '点赞成功' : '点赞未生效，请检查页面状态',
     };
   } finally {
     await closeBrowser(context);
@@ -339,8 +357,11 @@ async function extractCommentsFromDOM(page) {
       const articleTitle = articleEl?.textContent?.trim()?.substring(0, 60) || '';
       const articleUrl = articleEl?.href || '';
 
-      if (!content || seen.has(content)) continue;
-      seen.add(content);
+      // 去重键用 作者+正文+时间 复合键：原实现只按正文去重，
+      // 多条内容相同但作者/时间不同的评论（如都回复「赞」）会被漏报，count 偏小
+      const key = `${author}\u0000${content}\u0000${time}`;
+      if (!content || seen.has(key)) continue;
+      seen.add(key);
       results.push({ author, content, time, articleTitle, articleUrl });
     }
     return results;
