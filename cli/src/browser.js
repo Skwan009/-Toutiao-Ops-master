@@ -1,7 +1,10 @@
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { join } from 'path';
-import { mkdirSync } from 'fs';
+import { mkdirSync, existsSync, readdirSync, openSync } from 'fs';
+import { spawn } from 'child_process';
+import http from 'http';
+import { homedir } from 'os';
 import { BASE_DIR } from './paths.js';
 
 chromium.use(StealthPlugin());
@@ -15,10 +18,146 @@ const LAUNCH_ARGS = [
   '--no-first-run',
   '--no-default-browser-check',
   '--disable-infobars',
+  // CI / Linux root / 部分 Windows 受限沙箱下 Chromium 不关沙箱会直接起不来
+  '--no-sandbox',
 ];
 
 // 账号名白名单，避免 --account 携带路径分隔符穿越出 BASE_DIR
 const ACCOUNT_NAME_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+// 各平台 Chromium 在 playwright 缓存目录里的相对可执行文件位置
+const CHROME_RELATIVE = {
+  win32: [join('chrome-win64', 'chrome.exe'), join('chrome-win', 'chrome.exe')],
+  darwin: [join('chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium')],
+  linux: [join('chrome-linux', 'chrome')],
+};
+
+/**
+ * 列出候选的 playwright 浏览器缓存根目录。
+ * 优先用环境变量，其次扫各平台默认位置（含用户把缓存迁出 C 盘的常见路径）。
+ */
+function chromiumRoots() {
+  const roots = [];
+  const envPath = process.env.PLAYWRIGHT_BROWSERS_PATH;
+  if (envPath) roots.push(envPath);
+  if (process.platform === 'win32') {
+    if (process.env.LOCALAPPDATA) roots.push(join(process.env.LOCALAPPDATA, 'ms-playwright'));
+    roots.push('D:/msPlaywright');
+  } else if (process.platform === 'darwin') {
+    roots.push(join(homedir(), 'Library', 'Caches', 'ms-playwright'));
+  } else {
+    roots.push(join(homedir(), '.cache', 'ms-playwright'));
+  }
+  return roots.filter((p) => p && existsSync(p));
+}
+
+/**
+ * 解析 Chromium 可执行文件路径。
+ *
+ * 为什么需要：playwright 默认按自己注册表里的路径找浏览器，若用户把缓存目录
+ * 迁到别的盘（C 盘空间紧张时的常见做法）或只装了 Chromium 没装 Chrome，
+ * launchPersistentContext 会报 "Executable doesn't exist" 起不来。
+ * 这里主动找一遍，找到就显式传给 playwright；找不到返回 undefined 交回默认行为。
+ *
+ * @returns {string|undefined}
+ */
+export function resolveChromiumExecutablePath() {
+  if (process.env.CHROMIUM_EXECUTABLE_PATH && existsSync(process.env.CHROMIUM_EXECUTABLE_PATH)) {
+    return process.env.CHROMIUM_EXECUTABLE_PATH;
+  }
+
+  const relatives = CHROME_RELATIVE[process.platform] || CHROME_RELATIVE.linux;
+
+  for (const root of chromiumRoots()) {
+    // 先按 chromium-<build> 目录倒序（新版优先）逐个试
+    try {
+      const dirs = readdirSync(root, { withFileTypes: true })
+        .filter((d) => d.isDirectory() && d.name.startsWith('chromium-'))
+        .map((d) => d.name)
+        .sort()
+        .reverse();
+      for (const dir of dirs) {
+        for (const rel of relatives) {
+          const candidate = join(root, dir, rel);
+          if (existsSync(candidate)) return candidate;
+        }
+      }
+    } catch {}
+  }
+  return undefined;
+}
+
+/**
+ * 轮询 CDP 的 /json/version，直到调试端口就绪。
+ */
+function waitForCdpEndpoint(port, timeoutMs = 15000) {
+  const start = Date.now();
+  return new Promise((resolve, reject) => {
+    const poll = () => {
+      const req = http.get({ host: '127.0.0.1', port, path: '/json/version', timeout: 1500 }, (res) => {
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => {
+          try {
+            const info = JSON.parse(body);
+            if (info && info.webSocketDebuggerUrl) return resolve(info);
+          } catch {}
+          retry();
+        });
+      });
+      req.on('error', retry);
+      req.on('timeout', () => {
+        req.destroy();
+        retry();
+      });
+    };
+    const retry = () => {
+      if (Date.now() - start > timeoutMs) {
+        reject(new Error(`CDP 端口 ${port} 启动超时`));
+      } else {
+        setTimeout(poll, 250);
+      }
+    };
+    poll();
+  });
+}
+
+/**
+ * 回退启动方式：自己 spawn Chromium 开调试端口，再用 connectOverCDP 接管。
+ *
+ * 为什么需要：playwright 正常启动走 stdio 命名管道与子进程通信，在受限沙箱
+ * （Linux 容器、部分 Windows 安全策略）下建管道会抛 EPERM，浏览器起不来。
+ * 改成 stdio:ignore + 调试端口，绕开管道，功能等价。
+ *
+ * @returns {Promise<BrowserContext>} context 上挂了 _cdpChild/_cdpBrowser 供关闭时清理
+ */
+async function launchViaCdpFallback(userDataDir, executablePath, headless) {
+  const port = 9400 + Math.floor(Math.random() * 400);
+  const logFile = join(userDataDir, '..', 'chromium-cdp.log');
+  const logFd = openSync(logFile, 'a');
+  const args = [
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${userDataDir}`,
+    `--window-size=${DEFAULT_VIEWPORT.width},${DEFAULT_VIEWPORT.height}`,
+    '--lang=zh-CN',
+    ...LAUNCH_ARGS,
+    ...(headless ? ['--headless=new'] : []),
+    'about:blank',
+  ];
+  const child = spawn(executablePath, args, {
+    detached: true,
+    stdio: ['ignore', logFd, logFd],
+    windowsHide: headless,
+  });
+  child.unref();
+
+  await waitForCdpEndpoint(port, 15000);
+  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+  const context = browser.contexts()[0] || (await browser.newContext({ viewport: DEFAULT_VIEWPORT }));
+  context._cdpChild = child;
+  context._cdpBrowser = browser;
+  return context;
+}
 
 /**
  * 获取指定账号的数据目录路径。
@@ -60,17 +199,30 @@ export async function launchBrowser(opts = {}) {
   mkdirSync(userDataDir, { recursive: true });
 
   const headless = Boolean(opts.headless);
+  const executablePath = resolveChromiumExecutablePath();
 
-  const context = await chromium.launchPersistentContext(userDataDir, {
-    headless,
-    viewport: DEFAULT_VIEWPORT,
-    locale: 'zh-CN',
-    timezoneId: 'Asia/Shanghai',
-    args: LAUNCH_ARGS,
-    ignoreDefaultArgs: ['--enable-automation'],
-    permissions: [],
-    geolocation: undefined,
-  });
+  let context;
+  try {
+    context = await chromium.launchPersistentContext(userDataDir, {
+      // 解析到自定义位置的浏览器就显式传入；undefined 时交回 playwright 默认逻辑
+      executablePath,
+      headless,
+      viewport: DEFAULT_VIEWPORT,
+      locale: 'zh-CN',
+      timezoneId: 'Asia/Shanghai',
+      args: LAUNCH_ARGS,
+      ignoreDefaultArgs: ['--enable-automation'],
+      permissions: [],
+      geolocation: undefined,
+    });
+  } catch (err) {
+    // 受限沙箱下建命名管道会抛 EPERM，改用调试端口接管
+    if (executablePath && (err?.code === 'EPERM' || String(err?.message || '').includes('EPERM'))) {
+      context = await launchViaCdpFallback(userDataDir, executablePath, headless);
+    } else {
+      throw err;
+    }
+  }
 
   // 位置/通知等权限已在 launchPersistentContext 用 permissions: [] 关闭，
   // 无需再调用 grantPermissions（实测其第 2 参数在本版 Playwright 是 origin 字符串，
@@ -82,11 +234,21 @@ export async function launchBrowser(opts = {}) {
 }
 
 /**
- * 安全关闭浏览器上下文
+ * 安全关闭浏览器上下文。
+ * CDP 回退启动的浏览器是我们自己 spawn 的进程，关 context 不会带走它，需一并清理。
  */
 export async function closeBrowser(context) {
-  if (context) {
+  if (!context) return;
+  const child = context._cdpChild;
+  const browser = context._cdpBrowser;
+  try {
     await context.close();
+  } catch {}
+  if (browser) {
+    try { await browser.close(); } catch {}
+  }
+  if (child && child.pid) {
+    try { process.kill(child.pid); } catch {}
   }
 }
 

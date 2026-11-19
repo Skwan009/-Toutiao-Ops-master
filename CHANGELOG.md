@@ -17,6 +17,8 @@
 - CI 工作流 `.github/workflows/ci.yml`；发布流程增加测试门禁
 - 工程文件：`LICENSE`（MIT 全文 + 上游署名）、`CONTRIBUTING.md`、`SECURITY.md`、`.editorconfig`、`.gitattributes`、`Makefile`
 - 文档：`references/message-center.md`、`references/verify.md`、`references/topic-recommend.md`
+- `browser.js`：`resolveChromiumExecutablePath()` 主动解析 playwright 缓存里的 Chromium（依次认 `CHROMIUM_EXECUTABLE_PATH`、`PLAYWRIGHT_BROWSERS_PATH` 与各平台默认目录），解决浏览器缓存迁出 C 盘后报 `Executable doesn't exist` 起不来
+- `browser.js`：受限沙箱下建 stdio 命名管道抛 `EPERM` 时，自动回退到自起 Chromium 开调试端口 + `connectOverCDP` 接管；`closeBrowser` 会一并回收自建进程
 
 ### 修复
 
@@ -36,6 +38,7 @@
 - 临时调试脚本从 `cli/` 根目录迁入 `cli/tools/`
 - 漏斗降级（真实词表 / 域库缺失）时 `topic-recommend` 默认拒绝输出推荐，需 `--allow-degraded` 显式放行
 - 文档中的账号 / 评论 / 作品 / 话题示例 ID 全部改为占位值
+- `browser.js`：`LAUNCH_ARGS` 增加 `--no-sandbox`（CI、Linux root 与部分受限 Windows 沙箱下不加则 Chromium 起不来）
 
 ## [1.1.4] - 上游快照
 
